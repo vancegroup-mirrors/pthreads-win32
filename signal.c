@@ -2,17 +2,14 @@
  * signal.c
  *
  * Description:
- * POSIX thread-aware signal functions.
+ * Thread-aware signal functions.
  */
-
-#include <errno.h>
 
 #include "pthread.h"
 #include "implement.h"
 
-#if HAVE_SIGSET_T
 int
-pthread_sigmask(int how, sigset_t const *set, sigset_t *oset)
+pthread_sigmask(int how, const sigset_t *set, sigset_t *oset)
 {
   pthread_t thread = pthread_self();
 
@@ -36,18 +33,18 @@ pthread_sigmask(int how, sigset_t const *set, sigset_t *oset)
   /* Copy the old mask before modifying it. */
   if (oset != NULL)
     {
-      memcpy(oset, &(thread->sigmask), sizeof(sigset_t));
+      memcpy(oset, &(thread->attr.sigmask), sizeof(sigset_t));
     }
 
   if (set != NULL)
     {
-      unsigned int i;
+      int i;
 	
       /* FIXME: this code assumes that sigmask is an even multiple of
 	 the size of a long integer. */ 
          
-      unsigned long *src = (unsigned long const *) set;
-      unsigned long *dest = (unsigned long *) &(thread->sigmask);
+      unsigned long *src = (long *) set;
+      unsigned long *dest = &(thread->attr.sigmask);
 
       switch (how)
 	{
@@ -55,22 +52,21 @@ pthread_sigmask(int how, sigset_t const *set, sigset_t *oset)
 	  for (i = 0; i < (sizeof(sigset_t) / sizeof(unsigned long)); i++)
 	    {
 	      /* OR the bit field longword-wise. */
-	      *dest++ |= *src++;
+	      *src++ |= *dest++;
 	    }
 	  break;
 	case SIG_UNBLOCK:
 	  for (i = 0; i < (sizeof(sigset_t) / sizeof(unsigned long)); i++)
 	    {
 	      /* XOR the bitfield longword-wise. */
-	      *dest++ ^= *src++;
+	      *src++ ^= *dest++;
 	    }
 	case SIG_SETMASK:
 	  /* Replace the whole sigmask. */
-	  memcpy(&(thread->sigmask), set, sizeof(sigset_t));
+	  memcpy(&(thread->attr.sigmask), set, sizeof(sigset_t));
 	  break;
 	}
     }
 
   return 0;
 }
-#endif /* HAVE_SIGSET_T */
