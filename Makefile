@@ -18,6 +18,10 @@ VCEFLAGS	= /GX /TP /DPtW32NoCatchWarn
 #Structured Exceptions
 VSEFLAGS	= 
 
+# For Win64
+#CFLAGS	= /Bd /WX /W3 /MT /nologo /Yd /Zi /I. /D_WIN32_WINNT=0x400 /DPTW32_BUILD
+
+# For Win32
 CFLAGS	= /W3 /MT /nologo /Yd /Zi /I. /D_WIN32_WINNT=0x400 /DPTW32_BUILD
 
 OBJ=attr.obj \

@@ -848,7 +848,7 @@ ptw32_sem_timedwait (sem_t * sem, const struct timespec * abstime)
 	  /*
            * subtract current system time from abstime
            */
-	  milliseconds = (abstime->tv_sec - currSysTime.time) * MILLISEC_PER_SEC;
+	  milliseconds = (DWORD)(abstime->tv_sec - currSysTime.time) * MILLISEC_PER_SEC;
 	  milliseconds += ((abstime->tv_nsec + (NANOSEC_PER_MILLISEC/2)) / NANOSEC_PER_MILLISEC) -
 	    currSysTime.millitm;
 
@@ -910,7 +910,11 @@ ptw32_throw(DWORD exception)
 {
 #if defined(_MSC_VER) && !defined(__cplusplus)
 
+#ifdef _WIN64
+  ULONG_PTR exceptionInformation[3];
+#else
   DWORD exceptionInformation[3];
+#endif
 
 #endif
 
