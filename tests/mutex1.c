@@ -11,6 +11,8 @@
  *	pthread_mutex_destroy()
  */
 
+#define ASSERT_TRACE
+
 #include "test.h"
 
 pthread_mutex_t mutex = NULL;

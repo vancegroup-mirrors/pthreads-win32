@@ -67,6 +67,12 @@ pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
       return EINVAL;
     }
 
+  if (attr != NULL && *attr != NULL && (*attr)->pshared == PTHREAD_PROCESS_SHARED)
+    {
+      return ENOSYS;
+    }
+
+
   /*
    * We need to prevent us from being canceled
    * unexpectedly leaving the mutex in a corrupted state.
@@ -85,12 +91,6 @@ pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
    */
   PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
 
-  if (mx == NULL)
-    {
-      result = EINVAL;
-      goto FAIL0;
-    }
-
   /*
    * We now have exclusive access to the mutex pointer
    * and structure, whether initialised or not.
@@ -100,7 +100,25 @@ pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
   if (mx == NULL)
     {
       result = ENOMEM;
-      goto FAIL1;
+      goto FAIL0;
+    }
+
+  if (attr != NULL && *attr != NULL)
+    {
+      mx->pshared = (*attr)->pshared;
+      if ((*attr)->type == PTHREAD_MUTEX_DEFAULT)
+        {
+          mx->type = ptw32_mutex_mapped_default;
+        }
+      else
+        {
+          mx->type = (*attr)->type;
+        }
+    }
+  else
+    {
+      mx->type = ptw32_mutex_mapped_default;
+      mx->pshared = PTHREAD_PROCESS_PRIVATE;
     }
 
   mx->lock_idx = -1;
@@ -110,61 +128,16 @@ pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
   mx->lastOwner = NULL;
   mx->lastWaiter = NULL;
 
-  if (attr != NULL && *attr != NULL)
-    {
-      mx->type = (*attr)->type;
-      mx->pshared = (*attr)->pshared;
-
-      if (mx->pshared == PTHREAD_PROCESS_SHARED)
-        {
-          /*
-           * Creating mutex that can be shared between
-           * processes.
-           */
-
-#if _POSIX_THREAD_PROCESS_SHARED
-
-          /*
-           * Not implemented yet.
-           */
-
-#error ERROR [__FILE__, line __LINE__]: Process shared mutexes are not supported yet.
-
-#else
-
-          result = ENOSYS;
-
-#endif /* _POSIX_THREAD_PROCESS_SHARED */
-        }
-    }
-  else
-    {
-      mx->type = PTHREAD_MUTEX_DEFAULT;
-      mx->pshared = PTHREAD_PROCESS_PRIVATE;
-    }
-
-  if (mx->type == PTHREAD_MUTEX_DEFAULT)
-    {
-      mx->type = ptw32_mutex_mapped_default;
-    }
-
-  if (result != 0 && mx != NULL)
-    {
-      free(mx);
-      mx = NULL;
-    }
-
- FAIL1:
+ FAIL0:
   PTW32_OBJECT_SET(mutex, mx);
 
- FAIL0:
-  (void) pthread_mutex_setcanceltype(oldCancelType, NULL);
   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
     {
+      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
       pthread_testcancel();
     }
 
-  return(result);
+  return result;
 }
 
 int
@@ -259,12 +232,12 @@ pthread_mutex_destroy(pthread_mutex_t *mutex)
       mx = NULL;
     }
 
+ FAIL0:
   PTW32_OBJECT_SET(mutex, mx);
 
- FAIL0:
-  (void) pthread_mutex_setcanceltype(oldCancelType, NULL);
   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
     {
+      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
       pthread_testcancel();
     }
 
@@ -711,7 +684,7 @@ pthread_mutex_lock(pthread_mutex_t *mutex)
 
   if (mx == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
     {
-      result = pthread_mutex_init(&mx);
+      result = pthread_mutex_init(&mx, NULL);
     }
 
   if (result == 0)
@@ -774,13 +747,17 @@ WAIT_RECURSIVE:
                   mx->lastWaiter = self;
                   mx->lock_idx--;
                   PTW32_OBJECT_SET(mutex, mx);
-                  (void) pthread_setcanceltype(oldCancelType, NULL);
                   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
                     {
+                      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
                       pthread_testcancel();
+                      Sleep(0);
+                      (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
                     }
-                  Sleep(0);
-                  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+                  else
+                    {
+                      Sleep(0);
+                    }
                   PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
                   /*
                    * Thread priorities may have tricked another
@@ -846,13 +823,17 @@ WAIT_NORMAL:
                   mx->lastWaiter = self;
                   mx->lock_idx--;
                   PTW32_OBJECT_SET(mutex, mx);
-                  (void) pthread_setcanceltype(oldCancelType, NULL);
                   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
                     {
+                      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
                       pthread_testcancel();
+                      Sleep(0);
+                      (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
                     }
-                  Sleep(0);
-                  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+                  else
+                    {
+                      Sleep(0);
+                    }
                   PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
                   /*
                    * Thread priorities may have tricked another
@@ -920,13 +901,17 @@ WAIT_ERRORCHECK:
                   mx->lastWaiter = self;
                   mx->lock_idx--;
                   PTW32_OBJECT_SET(mutex, mx);
-                  (void) pthread_setcanceltype(oldCancelType, NULL);
                   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
                     {
+                      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
                       pthread_testcancel();
+                      Sleep(0);
+                      (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
                     }
-                  Sleep(0);
-                  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+                  else
+                    {
+                      Sleep(0);
+                    }
                   PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
                   /*
                    * Thread priorities may have tricked another
@@ -947,12 +932,12 @@ WAIT_ERRORCHECK:
         }
     }
 
+ FAIL0:
   PTW32_OBJECT_SET(mutex, mx);
 
- FAIL0:
-  (void) pthread_mutex_setcanceltype(oldCancelType, NULL);
   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
     {
+      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
       pthread_testcancel();
     }
 
@@ -1007,7 +992,7 @@ pthread_mutex_unlock(pthread_mutex_t *mutex)
    * asynch cancelation then we also check if we've
    * been canceled at the same time.
    */
-  (void) pthread_mutex_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
+  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
 
   /*
    * This waits until no other thread is looking at the
@@ -1052,12 +1037,12 @@ pthread_mutex_unlock(pthread_mutex_t *mutex)
       result = EPERM;
     }
 
+ FAIL0:
   PTW32_OBJECT_SET(mutex, mx);
 
- FAIL0:
-  (void) pthread_setcanceltype(oldCancelType, NULL);
   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
     {
+      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
       pthread_testcancel();
     }
 
@@ -1116,7 +1101,7 @@ pthread_mutex_trylock(pthread_mutex_t *mutex)
    * asynch cancelation then we also check if we've
    * been canceled at the same time.
    */
-  (void) pthread_mutex_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
+  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
 
   /*
    * If no other thread is looking at the
@@ -1142,7 +1127,7 @@ pthread_mutex_trylock(pthread_mutex_t *mutex)
 
   if (mx == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
     {
-      result = pthread_mutex_init(&mx);
+      result = pthread_mutex_init(&mx, NULL);
     }
 
   if (result == 0)
@@ -1181,9 +1166,9 @@ pthread_mutex_trylock(pthread_mutex_t *mutex)
   PTW32_OBJECT_SET(mutex, mx);
 
  FAIL0:
-  (void) pthread_setcanceltype(oldCancelType, NULL);
   if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
     {
+      (void) pthread_setcanceltype(PTHREAD_CANCEL_ASYNCHRONOUS, NULL);
       pthread_testcancel();
     }
 

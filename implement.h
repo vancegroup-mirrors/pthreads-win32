@@ -119,27 +119,27 @@ struct pthread_attr_t_ {
  */
 
 /*
- * The following macros provide exclusive access to an object's pointer.
+ * The following macros are used to serialise access to an object,
+ * including possibly before it is initialised.
  * See mutex.c:pthread_mutex_lock() for an example.
  */
 
-#define PTW32_OBJECT_GET(type, ppObject, pDest) \
-  while (((pDest) = (type) InterlockedCompareExchangePointer((PVOID *)(ppObject), \
-                                                             (PVOID)PTW32_OBJECT_IN_USE, \
-                                                             (PVOID)PTW32_OBJECT_IN_USE)) \
+#define PTW32_OBJECT_GET(type, pObject, Dest) \
+  while (((Dest) = (type) InterlockedExchange((LPLONG)(pObject), \
+                                              (LONG)PTW32_OBJECT_IN_USE)) \
          == (type)PTW32_OBJECT_IN_USE) \
     { \
       Sleep(0); \
     }
 
-#define PTW32_OBJECT_SET(ppObject, value) \
-  (void) InterlockedExchangePointer((PVOID *)(ppObject), (PVOID)(value))
+#define PTW32_OBJECT_SET(pObject, value) \
+  (void) InterlockedExchange((LPLONG)(pObject), (LONG)(value))
 
-#define PTW32_OBJECT_TRYGET(type, ppObject, pDest) \
-  ((((pDest) = (type) InterlockedExchangePointer((PVOID *)(ppObject), \
-                                                 (PVOID)PTW32_OBJECT_IN_USE)) \
-    == (type)PTW32_OBJECT_IN_USE) ? ((void) InterlockedExchangePointer((PVOID *)(ppObject), \
-                                                                       (PVOID)(pDest)) , 0) \
+#define PTW32_OBJECT_TRYGET(type, pObject, Dest) \
+  ((((Dest) = (type) InterlockedExchange((LPLONG)(pObject), \
+                                         (LONG)PTW32_OBJECT_IN_USE)) \
+    == (type)PTW32_OBJECT_IN_USE) ? ((void) InterlockedExchange((LPLONG)(pObject), \
+                                                                (LONG)(Dest)) , 0) \
                                   : 1)
 
 #define PTW32_OBJECT_IN_USE    ((void *) -2)
