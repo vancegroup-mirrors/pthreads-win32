@@ -29,62 +29,6 @@
 #include "pthread.h"
 #include "implement.h"
 
-static int
-ptw32_mutex_check_need_init(pthread_mutex_t *mutex)
-{
-  int result = 0;
-
-  /*
-   * The following guarded test is specifically for statically
-   * initialised mutexes (via PTHREAD_MUTEX_INITIALIZER).
-   *
-   * Note that by not providing this synchronisation we risk
-   * introducing race conditions into applications which are
-   * correctly written.
-   *
-   * Approach
-   * --------
-   * We know that static mutexes will not be PROCESS_SHARED
-   * so we can serialise access to internal state using
-   * Win32 Critical Sections rather than Win32 Mutexes.
-   *
-   * If using a single global lock slows applications down too much,
-   * multiple global locks could be created and hashed on some random
-   * value associated with each mutex, the pointer perhaps. At a guess,
-   * a good value for the optimal number of global locks might be
-   * the number of processors + 1.
-   *
-   */
-  EnterCriticalSection(&ptw32_mutex_test_init_lock);
-
-  /*
-   * We got here possibly under race
-   * conditions. Check again inside the critical section
-   * and only initialise if the mutex is valid (not been destroyed).
-   * If a static mutex has been destroyed, the application can
-   * re-initialise it only by calling pthread_mutex_init()
-   * explicitly.
-   */
-  if (*mutex == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
-    {
-      result = pthread_mutex_init(mutex, NULL);
-    }
-  else if (*mutex == NULL)
-    {
-      /*
-       * The mutex has been destroyed while we were waiting to
-       * initialise it, so the operation that caused the
-       * auto-initialisation should fail.
-       */
-      result = EINVAL;
-    }
-
-  LeaveCriticalSection(&ptw32_mutex_test_init_lock);
-
-  return result;
-}
-
-
 int
 pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
      /*
@@ -116,17 +60,47 @@ pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
 {
   int result = 0;
   pthread_mutex_t mx;
+  int oldCancelType;
 
   if (mutex == NULL)
     {
       return EINVAL;
     }
 
+  /*
+   * We need to prevent us from being canceled
+   * unexpectedly leaving the mutex in a corrupted state.
+   * We can do this by temporarily
+   * setting the thread to DEFERRED cancel type
+   * and resetting to the original value whenever
+   * we sleep and when we return. We also check if we've
+   * been canceled at the same time.
+   */
+  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
+
+  /*
+   * This waits until no other thread is looking at the
+   * (possibly uninitialised) mutex object, then gives
+   * us exclusive access.
+   */
+  PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
+
+  if (mx == NULL)
+    {
+      result = EINVAL;
+      goto FAIL0;
+    }
+
+  /*
+   * We now have exclusive access to the mutex pointer
+   * and structure, whether initialised or not.
+   */
+
   mx = (pthread_mutex_t) calloc(1, sizeof(*mx));
   if (mx == NULL)
     {
       result = ENOMEM;
-      goto FAIL0;
+      goto FAIL1;
     }
 
   mx->lock_idx = -1;
@@ -180,8 +154,15 @@ pthread_mutex_init(pthread_mutex_t *mutex, const pthread_mutexattr_t *attr)
       mx = NULL;
     }
 
-FAIL0:
-  *mutex = mx;
+ FAIL1:
+  PTW32_OBJECT_SET(mutex, mx);
+
+ FAIL0:
+  (void) pthread_mutex_setcanceltype(oldCancelType, NULL);
+  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+    {
+      pthread_testcancel();
+    }
 
   return(result);
 }
@@ -212,93 +193,79 @@ pthread_mutex_destroy(pthread_mutex_t *mutex)
 {
   int result = 0;
   pthread_mutex_t mx;
+  int oldCancelType;
 
-  if (mutex == NULL || *mutex == NULL)
+  if (mutex == NULL)
     {
       return EINVAL;
     }
 
   /*
+   * We need to prevent us from being canceled
+   * unexpectedly leaving the mutex in a corrupted state.
+   * We can do this by temporarily
+   * setting the thread to DEFERRED cancel type
+   * and resetting to the original value whenever
+   * we sleep and when we return. We also check if we've
+   * been canceled at the same time.
+   */
+  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
+
+  /*
+   * This waits until no other thread is looking at the
+   * (possibly uninitialised) mutex object, then gives
+   * us exclusive access.
+   */
+  PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
+
+  if (mx == NULL)
+    {
+      result = EINVAL;
+      goto FAIL0;
+    }
+
+  /*
+   * We now have exclusive access to the mutex pointer
+   * and structure, whether initialised or not.
+   */
+
+  /*
    * Check to see if we have something to delete.
    */
-  if (*mutex != (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
+  if (mx != (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
     {
-      mx = *mutex;
-
       /*
        * Check to see if the mutex is held by any thread. We
        * can't destroy it if it is. Pthread_mutex_trylock is
        * not recursive and will return EBUSY even if the current
        * thread holds the lock.
        */
-      result = pthread_mutex_trylock(&mx);
-
-      if (result == 0)
+      if (mx->owner != NULL)
         {
-          /*
-           * FIXME!!!
-           * The mutex isn't held by another thread but we could still
-           * be too late invalidating the mutex below. Yet we can't do it
-           * earlier in case another thread needs to unlock the mutex
-           * that it's holding.
-           */
-          *mutex = NULL;
-
-          result = pthread_mutex_unlock(&mx);
-
-          if (result == 0)
-            {
-              free(mx);
-            }
-          else
-            {
-              /*
-               * Restore the mutex before we return the error.
-               */
-              *mutex = mx;
-            }
+          result = EBUSY;
+        }
+      else
+        {
+          free(mx);
+          mx = NULL;
         }
     }
   else
     {
       /*
-       * See notes in ptw32_mutex_check_need_init() above also.
+       * This is all we need to do to destroy an
+       * uninitialised statically declared mutex.
        */
-      EnterCriticalSection(&ptw32_mutex_test_init_lock);
+      mx = NULL;
+    }
 
-      /*
-       * Check again.
-       */
-      if (*mutex == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
-        {
-          /*
-           * This is all we need to do to destroy a statically
-           * initialised mutex that has not yet been used (initialised).
-           * If we get to here, another thread
-           * waiting to initialise this mutex will get an EINVAL.
-           */
-          *mutex = NULL;
-        }
-      else
-        {
-          if (*mutex == NULL)
-            {
-              /*
-               * The mutex has been destroyed while we were waiting
-               * so we just ignore it.
-               */
-            }
-          else
-            {
-              /*
-               * The mutex has been initialised while we were waiting
-               * so assume it's in use.
-               */
-              result = EBUSY;
-            }
-        }
+  PTW32_OBJECT_SET(mutex, mx);
 
-      LeaveCriticalSection(&ptw32_mutex_test_init_lock);
+ FAIL0:
+  (void) pthread_mutex_setcanceltype(oldCancelType, NULL);
+  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+    {
+      pthread_testcancel();
     }
 
   return result;
@@ -705,28 +672,51 @@ pthread_mutex_lock(pthread_mutex_t *mutex)
 {
   int result = 0;
   pthread_mutex_t mx;
+  int oldCancelType;
 
-  if (mutex == NULL || *mutex == NULL)
+  if (mutex == NULL)
     {
       return EINVAL;
     }
 
   /*
-   * We do a quick check to see if we need to do more work
-   * to initialise a static mutex. We check
-   * again inside the guarded section of ptw32_mutex_check_need_init()
-   * to avoid race conditions.
+   * We need to prevent us from being canceled
+   * unexpectedly leaving the mutex in a corrupted state.
+   * We can do this by temporarily
+   * setting the thread to DEFERRED cancel type
+   * and resetting to the original value whenever
+   * we sleep and when we return. If we are set to
+   * asynch cancelation then we also check if we've
+   * been canceled at the same time.
    */
-  if (*mutex == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
+  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
+
+  /*
+   * This waits until no other thread is looking at the
+   * (possibly uninitialised) mutex object, then gives
+   * us exclusive access.
+   */
+  PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
+
+  if (mx == NULL)
     {
-      result = ptw32_mutex_check_need_init(mutex);
+      result = EINVAL;
+      goto FAIL0;
+    }
+
+  /*
+   * We now have exclusive access to the mutex pointer
+   * and structure, whether initialised or not.
+   */
+
+  if (mx == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
+    {
+      result = pthread_mutex_init(&mx);
     }
 
   if (result == 0)
     {
       pthread_t self = pthread_self();
-
-      mx = *mutex;
 
       switch (mx->type)
         {
@@ -734,14 +724,14 @@ pthread_mutex_lock(pthread_mutex_t *mutex)
         case PTHREAD_MUTEX_RECURSIVE:
           while (TRUE)
             {
-              if (0 == InterlockedIncrement(&mx->lock_idx))
+              if (0 == ++mx->lock_idx)
                 {
                   /*
-                   * Ensure that we give other waiting threads a
+                   * The lock is temporarily ours, but
+                   * ensure that we give other waiting threads a
                    * chance to take the mutex if we held it last time.
                    */
-                  if (InterlockedIncrement(&mx->waiters) > 0
-                      && mx->lastOwner == self)
+                  if (mx->waiters > 0 && mx->lastOwner == self)
                     {
                       /*
                        * Check to see if other waiting threads
@@ -752,7 +742,7 @@ pthread_mutex_lock(pthread_mutex_t *mutex)
                        */
                       if (mx->lastWaiter == self)
                         {
-                          (void) InterlockedExchange(&mx->waiters, 0L);
+                          mx->waiters = 0;
                         }
                       else
                         {
@@ -780,19 +770,27 @@ LOCK_RECURSIVE:
                       goto LOCK_RECURSIVE;
                     }
 WAIT_RECURSIVE:
-                  InterlockedIncrement(&mx->waiters);
+                  mx->waiters++;
                   mx->lastWaiter = self;
-                  InterlockedDecrement(&mx->lock_idx);
+                  mx->lock_idx--;
+                  PTW32_OBJECT_SET(mutex, mx);
+                  (void) pthread_setcanceltype(oldCancelType, NULL);
+                  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+                    {
+                      pthread_testcancel();
+                    }
                   Sleep(0);
+                  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+                  PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
                   /*
                    * Thread priorities may have tricked another
                    * thread into thinking we weren't waiting anymore.
-                   * If so, waiters will equal 0 so set it to 1
-                   * before we decrement it.
+                   * If so, waiters will equal 0 so just don't
+                   * decrement it.
                    */
-                  if (InterlockedDecrement(&mx->waiters) < 0)
+                  if (mx->waiters > 0)
                     {
-                      InterlockedExchange(&mx->waiters, 0);
+                      mx->waiters--;
                     }
                 }
             }
@@ -804,24 +802,25 @@ WAIT_RECURSIVE:
            */
           while (TRUE)
             {
-              if (0 == InterlockedIncrement(&mx->lock_idx))
+              if (0 == ++mx->lock_idx)
                 {
                   /*
-                   * Ensure that we give other waiting threads a
+                   * The lock is temporarily ours, but
+                   * ensure that we give other waiting threads a
                    * chance to take the mutex if we held it last time.
                    */
-                  if (InterlockedIncrement(&mx->waiters) > 0
-                      && mx->lastOwner == self)
+                  if (mx->waiters > 0 && mx->lastOwner == self)
                     {
                       /*
                        * Check to see if other waiting threads
                        * have stopped waiting but haven't decremented
                        * the 'waiters' counter - ie. they may have been
-                       * canceled.
+                       * canceled. If we're wrong then waiting threads will
+                       * increment the value again.
                        */
                       if (mx->lastWaiter == self)
                         {
-                          InterlockedExchange(&mx->waiters, 0L);
+                          mx->waiters = 0L;
                         }
                       else
                         {
@@ -843,19 +842,27 @@ WAIT_RECURSIVE:
                       Sleep(0);
                     }
 WAIT_NORMAL:
-                  InterlockedIncrement(&mx->waiters);
+                  mx->waiters++;
                   mx->lastWaiter = self;
-                  InterlockedDecrement(&mx->lock_idx);
+                  mx->lock_idx--;
+                  PTW32_OBJECT_SET(mutex, mx);
+                  (void) pthread_setcanceltype(oldCancelType, NULL);
+                  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+                    {
+                      pthread_testcancel();
+                    }
                   Sleep(0);
+                  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+                  PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
                   /*
                    * Thread priorities may have tricked another
                    * thread into thinking we weren't waiting anymore.
-                   * If so, waiters will equal 0 so set it to 1
-                   * before we decrement it.
+                   * If so, waiters will equal 0 so just don't
+                   * decrement it.
                    */
-                  if (InterlockedDecrement(&mx->waiters) < 0)
+                  if (mx->waiters > 0)
                     {
-                      InterlockedExchange(&mx->waiters, 0);
+                      mx->waiters--;
                     }
                 }
             }
@@ -863,24 +870,25 @@ WAIT_NORMAL:
         case PTHREAD_MUTEX_ERRORCHECK:
           while (TRUE)
             {
-              if (0 == InterlockedIncrement(&mx->lock_idx))
+              if (0 == ++mx->lock_idx)
                 {
                   /*
-                   * Ensure that we give other waiting threads a
+                   * The lock is temporarily ours, but
+                   * ensure that we give other waiting threads a
                    * chance to take the mutex if we held it last time.
                    */
-                  if (InterlockedIncrement(&mx->waiters) > 0
-                      && mx->lastOwner == self)
+                  if (mx->waiters > 0 && mx->lastOwner == self)
                     {
                       /*
                        * Check to see if other waiting threads
                        * have stopped waiting but haven't decremented
                        * the 'waiters' counter - ie. they may have been
-                       * canceled.
+                       * canceled. If we're wrong then waiting threads will
+                       * increment the value again.
                        */
                       if (mx->lastWaiter == self)
                         {
-                          InterlockedExchange(&mx->waiters, 0L);
+                          mx->waiters = 0L;
                         }
                       else
                         {
@@ -908,19 +916,27 @@ WAIT_NORMAL:
                       break;
                     }
 WAIT_ERRORCHECK:
-                  InterlockedIncrement(&mx->waiters);
+                  mx->waiters++;
                   mx->lastWaiter = self;
-                  InterlockedDecrement(&mx->lock_idx);
+                  mx->lock_idx--;
+                  PTW32_OBJECT_SET(mutex, mx);
+                  (void) pthread_setcanceltype(oldCancelType, NULL);
+                  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+                    {
+                      pthread_testcancel();
+                    }
                   Sleep(0);
+                  (void) pthread_setcanceltype(PTHREAD_CANCEL_DEFERRED, NULL);
+                  PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
                   /*
                    * Thread priorities may have tricked another
                    * thread into thinking we weren't waiting anymore.
-                   * If so, waiters will equal 0 so set it to 1
-                   * before we decrement it.
+                   * If so, waiters will equal 0 so just don't
+                   * decrement it.
                    */
-                  if (InterlockedDecrement(&mx->waiters) < 0)
+                  if (mx->waiters > 0)
                     {
-                      InterlockedExchange(&mx->waiters, 0);
+                      mx->waiters--;
                     }
                 }
             }
@@ -929,6 +945,15 @@ WAIT_ERRORCHECK:
           result = EINVAL;
           break;
         }
+    }
+
+  PTW32_OBJECT_SET(mutex, mx);
+
+ FAIL0:
+  (void) pthread_mutex_setcanceltype(oldCancelType, NULL);
+  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+    {
+      pthread_testcancel();
     }
 
   return result;
@@ -965,19 +990,43 @@ pthread_mutex_unlock(pthread_mutex_t *mutex)
 {
   int result = 0;
   pthread_mutex_t mx;
+  int oldCancelType;
 
-  if (mutex == NULL || *mutex == NULL)
+  if (mutex == NULL)
     {
       return EINVAL;
     }
 
-  mx = *mutex;
-
-  /* 
-   * If the thread calling us holds the mutex then there is no
-   * race condition. If another thread holds the
-   * lock then we shouldn't be in here.
+  /*
+   * We need to prevent us from being canceled
+   * unexpectedly leaving the mutex in a corrupted state.
+   * We can do this by temporarily
+   * setting the thread to DEFERRED cancel type
+   * and resetting to the original value whenever
+   * we sleep and when we return. If we are set to
+   * asynch cancelation then we also check if we've
+   * been canceled at the same time.
    */
+  (void) pthread_mutex_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
+
+  /*
+   * This waits until no other thread is looking at the
+   * (possibly uninitialised) mutex object, then gives
+   * us exclusive access.
+   */
+  PTW32_OBJECT_GET(pthread_mutex_t, mutex, mx);
+
+  if (mx == NULL)
+    {
+      result = EINVAL;
+      goto FAIL0;
+    }
+
+  /*
+   * We now have exclusive access to the mutex pointer
+   * and structure, whether initialised or not.
+   */
+
   if (mx != (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT
       && mx->owner == pthread_self())
     {
@@ -996,11 +1045,20 @@ pthread_mutex_unlock(pthread_mutex_t *mutex)
           break;
         }
 
-      InterlockedDecrement(&mx->lock_idx);
+      mx->lock_idx--;
     }
   else
     {
       result = EPERM;
+    }
+
+  PTW32_OBJECT_SET(mutex, mx);
+
+ FAIL0:
+  (void) pthread_setcanceltype(oldCancelType, NULL);
+  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+    {
+      pthread_testcancel();
     }
 
   return result;
@@ -1041,24 +1099,51 @@ pthread_mutex_trylock(pthread_mutex_t *mutex)
   int result = 0;
   pthread_mutex_t mx;
   pthread_t self;
+  int oldCancelType;
 
-  if (mutex == NULL || *mutex == NULL)
+  if (mutex == NULL)
     {
       return EINVAL;
     }
 
   /*
-   * We do a quick check to see if we need to do more work
-   * to initialise a static mutex. We check
-   * again inside the guarded section of ptw32_mutex_check_need_init()
-   * to avoid race conditions.
+   * We need to prevent us from being canceled
+   * unexpectedly leaving the mutex in a corrupted state.
+   * We can do this by temporarily
+   * setting the thread to DEFERRED cancel type
+   * and resetting to the original value whenever
+   * we sleep and when we return. If we are set to
+   * asynch cancelation then we also check if we've
+   * been canceled at the same time.
    */
-  if (*mutex == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
+  (void) pthread_mutex_setcanceltype(PTHREAD_CANCEL_DEFERRED, &oldCancelType);
+
+  /*
+   * If no other thread is looking at the
+   * (possibly uninitialised) mutex object, then gives
+   * us exclusive access, otherwise returns immediately.
+   */
+  if (!PTW32_OBJECT_TRYGET(pthread_mutex_t, mutex, mx))
     {
-      result = ptw32_mutex_check_need_init(mutex);
+      result = EBUSY;
+      goto FAIL0;
     }
 
-  mx = *mutex;
+  if (mx == NULL)
+    {
+      result = EINVAL;
+      goto FAIL0;
+    }
+
+  /*
+   * We now have exclusive access to the mutex pointer
+   * and structure, whether initialised or not.
+   */
+
+  if (mx == (pthread_mutex_t) PTW32_OBJECT_AUTO_INIT)
+    {
+      result = pthread_mutex_init(&mx);
+    }
 
   if (result == 0)
     {
@@ -1091,6 +1176,15 @@ pthread_mutex_trylock(pthread_mutex_t *mutex)
         {
           result = EBUSY;
         }
+    }
+
+  PTW32_OBJECT_SET(mutex, mx);
+
+ FAIL0:
+  (void) pthread_setcanceltype(oldCancelType, NULL);
+  if (oldCancelType == PTHREAD_CANCEL_ASYNCHRONOUS)
+    {
+      pthread_testcancel();
     }
 
   return result;

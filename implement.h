@@ -118,6 +118,31 @@ struct pthread_attr_t_ {
  * ====================
  */
 
+/*
+ * The following macros provide exclusive access to an object's pointer.
+ * See mutex.c:pthread_mutex_lock() for an example.
+ */
+
+#define PTW32_OBJECT_GET(type, ppObject, pDest) \
+  while (((pDest) = (type) InterlockedCompareExchangePointer((PVOID *)(ppObject), \
+                                                             (PVOID)PTW32_OBJECT_IN_USE, \
+                                                             (PVOID)PTW32_OBJECT_IN_USE)) \
+         == (type)PTW32_OBJECT_IN_USE) \
+    { \
+      Sleep(0); \
+    }
+
+#define PTW32_OBJECT_SET(ppObject, value) \
+  (void) InterlockedExchangePointer((PVOID *)(ppObject), (PVOID)(value))
+
+#define PTW32_OBJECT_TRYGET(type, ppObject, pDest) \
+  ((((pDest) = (type) InterlockedExchangePointer((PVOID *)(ppObject), \
+                                                 (PVOID)PTW32_OBJECT_IN_USE)) \
+    == (type)PTW32_OBJECT_IN_USE) ? ((void) InterlockedExchangePointer((PVOID *)(ppObject), \
+                                                                       (PVOID)(pDest)) , 0) \
+                                  : 1)
+
+#define PTW32_OBJECT_IN_USE    ((void *) -2)
 #define PTW32_OBJECT_AUTO_INIT ((void *) -1)
 #define PTW32_OBJECT_INVALID   NULL
 

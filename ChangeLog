@@ -1,3 +1,30 @@
+2001-02-12  Ross Johnson  <rpj@setup1.ise.canberra.edu.au>
+
+	* mutex.c (pthread_mutex_init): Revamped yet again.
+	(pthread_mutex_destroy): Likewise.
+	(pthread_mutex_lock): Likewise.
+	(pthread_mutex_unlock): Likewise.
+	(pthread_mutex_trylock): Likewise.
+	We now guarantee exclusive access to the pthread_mutex_t
+	(ie. the pointer to the pthread_mutex_t_ struct) and
+	therefore also to the mutex object whether initialised
+	or not. We also ensure that mutex objects are not
+	corrupted by a thread when it is asynchronously
+	canceled (by temporarily setting the thread to DEFERRED
+	cancelation mode). This is to say that the mutex routines
+	now manipulate pthread_mutex_t objects atomically and
+	are cancelation-safe.
+	(ptw32_mutex_check_need_init): Removed - no longer needed.
+	* implement.h (PTW32_OBJECT_GET): New macro to
+	wait and exclusively acquire a pthread_mutex_t object.
+	(PTW32_OBJECT_SET): New macro to set and release a
+	pthread_mutex_t object.
+	(PTW32_OBJECT_TRYGET): New macro to check if another
+	thread is accessing a pthread_mutex_t object and either
+	gives exclusive access or returns immediately.
+	(PTW32_OBJECT_IN_USE): New constant for exclusive access to
+	pthread_mutex_t objects.
+
 2001-02-09  Ross Johnson  <rpj@setup1.ise.canberra.edu.au>
 
 	* nonportable.c (pthread_mutex_setdefaulttype_np): New
