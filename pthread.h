@@ -122,17 +122,6 @@
  *      ---------------------------
  *      pthread_sigmask
  *
- *      ---------------------------
- *      Read/Write Locks:
- *      ---------------------------
- *      pthread_rwlock_init
- *      pthread_rwlock_destroy
- *      pthread_rwlock_tryrdlock
- *      pthread_rwlock_trywrlock
- *      pthread_rwlock_rdlock
- *      pthread_rwlock_rwlock
- *      pthread_rwlock_unlock
- *
  * Limitations
  * ===========
  *      The following functions are not implemented:
@@ -215,7 +204,12 @@
 #endif /* HAVE_CONFIG_H */
 
 #include <windows.h>
+
+#ifndef NEED_FTIME
 #include <time.h>
+#else /* NEED_FTIME */
+/* use native WIN32 time API */
+#endif /* NEED_FTIME */
 
 #if HAVE_SIGNAL_H
 #include <signal.h>
@@ -243,14 +237,22 @@ struct timespec {
 #endif /* SIG_SETMASK */
 
 
-#include <process.h>
-#include <errno.h>
-
-#ifdef _WIN32
-#ifndef ETIMEDOUT
-#define ETIMEDOUT 19981220     /* Let's hope this is unique */
+/*
+ * note: ETIMEDOUT is correctly defined in winsock.h on winCE
+ */
+#ifdef HAVE_WINSOCK_H
+#include <winsock.h>
 #endif
-#endif /* _WIN32 */
+
+#ifdef NEED_ERRNO
+#include "need_errno.h"
+#else
+#include <errno.h>
+#endif
+
+#ifndef ETIMEDOUT
+#define ETIMEDOUT 19981220     /* FIXME: Need the proper value here. */
+#endif
 
 #ifdef _MSC_VER
 /*
@@ -263,6 +265,13 @@ struct timespec {
 #define TRUE	!FALSE
 #define FALSE	0
 #endif /* !TRUE */
+
+#ifdef __MINGW32__
+#define PT_STDCALL
+#else
+#define PT_STDCALL __stdcall
+#endif
+
 
 /* 
  * This should perhaps be in autoconf or 
@@ -376,9 +385,7 @@ extern "C"
 /*
  * POSIX Options
  */
-#ifndef _POSIX_THREADS
 #define _POSIX_THREADS
-#endif
 #define _POSIX_THREAD_SAFE_FUNCTIONS
 
 #define _POSIX_THREAD_ATTR_STACKSIZE
@@ -431,8 +438,6 @@ typedef struct pthread_mutex_t_ *pthread_mutex_t;
 typedef struct pthread_mutexattr_t_ *pthread_mutexattr_t;
 typedef struct pthread_cond_t_ *pthread_cond_t;
 typedef struct pthread_condattr_t_ *pthread_condattr_t;
-typedef struct pthread_rwlock_t_ *pthread_rwlock_t;
-typedef struct pthread_rwlockattr_t_ *pthread_rwlockattr_t;
 
 
 /*
@@ -511,8 +516,6 @@ struct pthread_once_t_
 
 #define PTHREAD_COND_INITIALIZER ((pthread_cond_t) -1)
 
-#define PTHREAD_RWLOCK_INITIALIZER ((pthread_rwlock_t) -1)
-
 
 /*
  * ====================
@@ -551,14 +554,6 @@ struct sched_param {
  *   WIN32 SEH
  *   C
  *   C++
- *
- * Please note that exiting a push/pop block via
- * "return", "exit", "break", or "continue" will
- * lead to different behaviour amongst applications
- * depending upon whether the library was built
- * using SEH, C++, or C. For example, a library built
- * with SEH will call the cleanup routine, while both
- * C++ and C built versions will not.
  */
 
 typedef struct _pthread_cleanup_t _pthread_cleanup_t;
@@ -569,7 +564,7 @@ struct _pthread_cleanup_t
   void *arg;
 #if !defined(_MSC_VER) && !defined(__cplusplus)
   _pthread_cleanup_t *prev;
-#endif /* !_MSC_VER && ! __cplusplus */
+#endif
 };
 
 #ifdef _MSC_VER
@@ -702,6 +697,12 @@ struct _pthread_cleanup_t
  * ===============
  * ===============
  */
+
+/*
+ * Useful if an application wants to statically link
+ * the lib rather than load the DLL at run-time.
+ */
+int pthread_win32_initialize_np(void);
 
 /*
  * PThread Attribute Functions
@@ -863,25 +864,6 @@ int pthread_attr_setschedparam (pthread_attr_t *attr,
 				const struct sched_param *param);
 
 /*
- * Read-Write Lock Functions
- */
-
-int pthread_rwlock_init(pthread_rwlock_t *lock,
-                               const pthread_rwlockattr_t *attr);
-
-int pthread_rwlock_destroy(pthread_rwlock_t *lock);
-
-int pthread_rwlock_tryrdlock(pthread_rwlock_t *);
-
-int pthread_rwlock_trywrlock(pthread_rwlock_t *);
-
-int pthread_rwlock_rdlock(pthread_rwlock_t *lock);
-
-int pthread_rwlock_wrlock(pthread_rwlock_t *lock);
-
-int pthread_rwlock_unlock(pthread_rwlock_t *lock);
-
-/*
  * Protected Methods
  *
  * This function blocks until the given WIN32 handle
@@ -902,7 +884,7 @@ int pthreadCancelableTimedWait (HANDLE waitHandle, DWORD timeout);
 /*
  * Thread-Safe C Runtime Library Mappings.
  */
-#if ! defined( _REENTRANT ) && ! defined( _MT )
+#if (! defined(NEED_ERRNO)) || (! defined( _REENTRANT ) && ! defined( _MT ))
 int * _errno( void );
 #endif
 
@@ -925,8 +907,8 @@ int * _errno( void );
 	  (_buf) )
 
 #define ctime_r( _clock, _buf ) \
-	( strcpy( (_buf), ctime( (_tm) ) ),  \
-          (_buf) )
+	( strcpy( (_buf), ctime( (_tm) ) ), \
+	  (_buf) )
 
 #define gmtime_r( _clock, _result ) \
 	( *(_result) = *gmtime( (_clock) ), \

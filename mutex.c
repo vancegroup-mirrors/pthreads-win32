@@ -23,7 +23,8 @@
  * MA 02111-1307, USA
  */
 
-#include <errno.h>
+/* errno.h or a replacement file is included by pthread.h */
+//#include <errno.h>
 
 #include "pthread.h"
 #include "implement.h"
@@ -68,15 +69,6 @@ _mutex_check_need_init(pthread_mutex_t *mutex)
   if (*mutex == (pthread_mutex_t) _PTHREAD_OBJECT_AUTO_INIT)
     {
       result = pthread_mutex_init(mutex, NULL);
-    }
-  else if (*mutex == NULL)
-    {
-      /*
-       * The mutex has been destroyed while we were waiting to
-       * initialise it, so the operation that caused the
-       * auto-initialisation should fail.
-       */
-      result = EINVAL;
     }
 
   LeaveCriticalSection(&_pthread_mutex_test_init_lock);
@@ -186,13 +178,13 @@ pthread_mutex_destroy(pthread_mutex_t *mutex)
       return EINVAL;
     }
 
+  mx = *mutex;
+
   /*
    * Check to see if we have something to delete.
    */
-  if (*mutex != (pthread_mutex_t) _PTHREAD_OBJECT_AUTO_INIT)
+  if (mx != (pthread_mutex_t) _PTHREAD_OBJECT_AUTO_INIT)
     {
-      mx = *mutex;
-
       if (mx->mutex == 0)
 	{
 	  DeleteCriticalSection(&mx->cs);
@@ -201,44 +193,12 @@ pthread_mutex_destroy(pthread_mutex_t *mutex)
 	{
 	  result = (CloseHandle (mx->mutex) ? 0 : EINVAL);
 	}
-
-      if (result == 0)
-        {
-          mx->mutex = 0;
-          free(mx);
-          *mutex = NULL;
-        }
     }
-  else
+
+  if (result == 0)
     {
-      /*
-       * See notes in _mutex_check_need_init() above also.
-       */
-      EnterCriticalSection(&_pthread_mutex_test_init_lock);
-
-      /*
-       * Check again.
-       */
-      if (*mutex == (pthread_mutex_t) _PTHREAD_OBJECT_AUTO_INIT)
-        {
-          /*
-           * This is all we need to do to destroy a statically
-           * initialised mutex that has not yet been used (initialised).
-           * If we get to here, another thread
-           * waiting to initialise this mutex will get an EINVAL.
-           */
-          *mutex = NULL;
-        }
-      else
-        {
-          /*
-           * The mutex has been initialised while we were waiting
-           * so assume it's in use.
-           */
-          result = EBUSY;
-        }
-
-      LeaveCriticalSection(&_pthread_mutex_test_init_lock);
+      mx->mutex = 0;
+      *mutex = NULL;
     }
 
   return(result);

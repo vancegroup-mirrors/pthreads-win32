@@ -30,7 +30,7 @@
 
 #endif /* !_MSC_VER && !__cplusplus && __GNUC__ */
 
-#include <sys/timeb.h>
+//#include <sys/timeb.h>
 #include "pthread.h"
 #include "semaphore.h"
 #include "implement.h"
@@ -60,6 +60,17 @@ _pthread_processInitialize (void)
       * ------------------------------------------------------
       */
 {
+	if (_pthread_processInitialized) {
+		/* 
+		 * ignore if already initialized. this is useful for 
+		 * programs that uses a non-dll pthread
+		 * library. such programs must call _pthread_processInitialize() explicitely,
+		 * since this initialization routine is automatically called only when
+		 * the dll is loaded.
+		 */
+		return TRUE;
+	}
+
   _pthread_processInitialized = TRUE;
 
   /*
@@ -77,7 +88,6 @@ _pthread_processInitialize (void)
    */
   InitializeCriticalSection(&_pthread_mutex_test_init_lock);
   InitializeCriticalSection(&_pthread_cond_test_init_lock);
-  InitializeCriticalSection(&_pthread_rwlock_test_init_lock);
 
   return (_pthread_processInitialized);
 
@@ -132,66 +142,30 @@ _pthread_processTerminate (void)
       /* 
        * Destroy the global test and init check locks.
        */
-      DeleteCriticalSection(&_pthread_rwlock_test_init_lock);
-      DeleteCriticalSection(&_pthread_cond_test_init_lock);
       DeleteCriticalSection(&_pthread_mutex_test_init_lock);
+      DeleteCriticalSection(&_pthread_cond_test_init_lock);
 
       _pthread_processInitialized = FALSE;
     }
 
 }				/* processTerminate */
 
-#ifdef _MSC_VER
-
-static DWORD
-ExceptionFilter (EXCEPTION_POINTERS * ep, DWORD * ei)
-{
-  DWORD param;
-  DWORD numParams = ep->ExceptionRecord->NumberParameters;
-  
-  numParams = (numParams > 3) ? 3 : numParams;
-
-  for (param = 0; param < numParams; param++)
-    {
-      ei[param] = ep->ExceptionRecord->ExceptionInformation[param];
-    }
-
-  return EXCEPTION_EXECUTE_HANDLER;
-}
-
-#endif /* _MSC_VER */
-
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
-unsigned PT_STDCALL
-#else
-void
-#endif
+void *
 _pthread_threadStart (ThreadParms * threadParms)
 {
-  pthread_t self;
+  pthread_t tid;
   void *(*start) (void *);
   void *arg;
 
-#ifdef _MSC_VER
-
-  DWORD ei[3];
-
-#endif
-
   void * status;
 
-  self = threadParms->tid;
+  tid = threadParms->tid;
   start = threadParms->start;
   arg = threadParms->arg;
 
-#if defined (__MINGW32__) && ! defined (__MSVCRT__)
-  /* beginthread does not return the thread id, and so we do it here. */
-  self->thread = GetCurrentThreadId ();
-#endif
-
   free (threadParms);
 
-  pthread_setspecific (_pthread_selfThreadKey, self);
+  pthread_setspecific (_pthread_selfThreadKey, tid);
 
 #ifdef _MSC_VER
 
@@ -200,34 +174,16 @@ _pthread_threadStart (ThreadParms * threadParms)
     /*
      * Run the caller's routine;
      */
-    status = (*start) (arg);
+    (*start) (arg);
+    status = (void *) 0;
   }
-  __except (ExceptionFilter(GetExceptionInformation(), ei))
+  __except (EXCEPTION_EXECUTE_HANDLER)
   {
-    DWORD ec = GetExceptionCode();
-
-    if (ec == EXCEPTION_PTHREAD_SERVICES)
-      {
-	switch (ei[0])
-	  {
-	  case _PTHREAD_EPS_CANCEL:
-	    status = PTHREAD_CANCELED;
-	    break;
-	  case _PTHREAD_EPS_EXIT:
-	    status = (void *) ei[1];
-	    break;
-	  default:
-	    status = PTHREAD_CANCELED;
-	  }
-      }
-    else
-      {
-	/*
-	 * A system unexpected exception had occurred running the user's
-	 * routine. We get control back within this block.
-	 */
-	status = PTHREAD_CANCELED;
-      }
+    /*
+     * A system unexpected exception had occurred running the user's
+     * routine. We get control back within this block.
+     */
+    status = PTHREAD_CANCELED;
   }
 
 #else /* _MSC_VER */
@@ -239,21 +195,15 @@ _pthread_threadStart (ThreadParms * threadParms)
     /*
      * Run the caller's routine;
      */
-    status = self->exitStatus = (*start) (arg);
+    (*start) (arg);
+    status = (void *) 0;
   }
-  catch (Pthread_exception_cancel)
+  catch (Pthread_exception)
     {
       /*
        * Thread was cancelled.
        */
       status = PTHREAD_CANCELED;
-    }
-  catch (Pthread_exception_exit)
-    {
-      /*
-       * Thread was exited via pthread_exit().
-       */
-      status = self->exitStatus;
     }
   catch (...)
     {
@@ -270,27 +220,19 @@ _pthread_threadStart (ThreadParms * threadParms)
    * Run the caller's routine; no cancelation or other exceptions will
    * be honoured.
    */
-  status = (*start) (arg);
+  (*start) (arg);
+  status = (void *) 0;
 
 #endif /* __cplusplus */
 
-#endif /* _MSC_VER */
+#endif /* _WIN32 */
 
-  _pthread_callUserDestroyRoutines(self);
-
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
-  _endthreadex ((unsigned) status);
-#else
-  _endthread ();
-#endif
+  pthread_exit (status);
 
   /*
    * Never reached.
    */
-
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
-  return (unsigned) status;
-#endif
+  return (status);
 
 }				/* _pthread_threadStart */
 
@@ -306,13 +248,10 @@ _pthread_threadDestroy (pthread_t thread)
 	  CloseHandle (thread->cancelEvent);
 	}
 
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
-      /* See documentation for endthread vs endthreadex. */
       if( thread->threadH != 0 )
 	{
 	  CloseHandle( thread->threadH );
 	}
-#endif
 
       free (thread);
     }
@@ -586,6 +525,46 @@ _pthread_callUserDestroyRoutines (pthread_t thread)
 }				/* _pthread_callUserDestroyRoutines */
 
 
+
+#ifdef NEED_FTIME
+
+/*
+ * time between jan 1, 1601 and jan 1, 1970 in units of 100 nanoseconds
+ */
+#define TIMESPEC_TO_FILETIME_OFFSET \
+          ( ((LONGLONG) 27111902 << 32) + (LONGLONG) 3577643008 )
+
+static void
+timespec_to_filetime(const struct timespec *ts, FILETIME *ft)
+     /*
+      * -------------------------------------------------------------------
+      * converts struct timespec
+      * where the time is expressed in seconds and nanoseconds from Jan 1, 1970.
+      * into FILETIME (as set by GetSystemTimeAsFileTime), where the time is
+      * expressed in 100 nanoseconds from Jan 1, 1601,
+      * -------------------------------------------------------------------
+      */
+{
+	*(LONGLONG *)ft = ts->tv_sec * 10000000 + (ts->tv_nsec + 50) / 100 + TIMESPEC_TO_FILETIME_OFFSET;
+}
+
+static void
+filetime_to_timespec(const FILETIME *ft, struct timespec *ts)
+     /*
+      * -------------------------------------------------------------------
+      * converts FILETIME (as set by GetSystemTimeAsFileTime), where the time is
+      * expressed in 100 nanoseconds from Jan 1, 1601,
+      * into struct timespec
+      * where the time is expressed in seconds and nanoseconds from Jan 1, 1970.
+      * -------------------------------------------------------------------
+      */
+{
+	ts->tv_sec = (int)((*(LONGLONG *)ft - TIMESPEC_TO_FILETIME_OFFSET) / 10000000);
+	ts->tv_nsec = (int)((*(LONGLONG *)ft - TIMESPEC_TO_FILETIME_OFFSET - ((LONGLONG)ts->tv_sec * (LONGLONG)10000000)) * 100);
+}
+
+#endif /* NEED_FTIME */
+
 int
 _pthread_sem_timedwait (sem_t * sem, const struct timespec * abstime)
      /*
@@ -628,15 +607,21 @@ _pthread_sem_timedwait (sem_t * sem, const struct timespec * abstime)
 {
   int result = 0;
 
+#ifdef NEED_FTIME
+
+  struct timespec currSysTime;
+
+#else /* NEED_FTIME */
 #if defined(__MINGW32__)
 
   struct timeb currSysTime;
 
-#else
+#else /* __MINGW32__ */
 
   struct _timeb currSysTime;
 
-#endif
+#endif /* __MINGW32__ */
+#endif /* NEED_FTIME */
 
   const DWORD NANOSEC_PER_MILLISEC = 1000000;
   const DWORD MILLISEC_PER_SEC = 1000;
@@ -659,18 +644,56 @@ _pthread_sem_timedwait (sem_t * sem, const struct timespec * abstime)
 	   */
 
 	  /* get current system time */
+
+#ifdef NEED_FTIME
+
+	  {
+	    FILETIME ft;
+	    SYSTEMTIME st;
+
+	    GetSystemTime(&st);
+            SystemTimeToFileTime(&st, &ft);
+	    /*
+             * GetSystemTimeAsFileTime(&ft); would be faster,
+             * but it does not exist on WinCE
+             */
+
+	    filetime_to_timespec(&ft, &currSysTime);
+	  }
+
+	  /*
+           * subtract current system time from abstime
+           */
+	  milliseconds = (abstime->tv_sec - currSysTime.tv_sec) * MILLISEC_PER_SEC;
+	  milliseconds += ((abstime->tv_nsec - currSysTime.tv_nsec) + (NANOSEC_PER_MILLISEC/2)) / NANOSEC_PER_MILLISEC;
+
+#else /* NEED_FTIME */
 	  _ftime(&currSysTime);
 
-	  /* subtract current system time from abstime */
+	  /*
+           * subtract current system time from abstime
+           */
 	  milliseconds = (abstime->tv_sec - currSysTime.time) * MILLISEC_PER_SEC;
-	  milliseconds += (abstime->tv_nsec / NANOSEC_PER_MILLISEC) -
+	  milliseconds += ((abstime->tv_nsec + (NANOSEC_PER_MILLISEC/2)) / NANOSEC_PER_MILLISEC) -
 	    currSysTime.millitm;
+
+#endif /* NEED_FTIME */
+
 
 	  if (((int) milliseconds) < 0)
 	    milliseconds = 0;
 	}
 
+#ifdef NEED_SEM
+
+      result = (pthreadCancelableTimedWait (sem->event, milliseconds));
+
+#else /* NEED_SEM */
+
       result = (pthreadCancelableTimedWait (*sem, milliseconds));
+
+#endif
+
     }
 
   if (result != 0)
@@ -680,6 +703,12 @@ _pthread_sem_timedwait (sem_t * sem, const struct timespec * abstime)
       return -1;
 
     }
+
+#ifdef NEED_SEM
+
+  _pthread_decrease_semaphore(sem);
+
+#endif /* NEED_SEM */
 
   return 0;
 

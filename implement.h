@@ -27,9 +27,8 @@
 #ifndef _IMPLEMENT_H
 #define _IMPLEMENT_H
 
-#define PT_STDCALL __stdcall
-
-#include <semaphore.h>
+/* changed include from <semaphore.h> to use local file during development */
+#include "semaphore.h"
 
 typedef enum {
   /*
@@ -161,22 +160,6 @@ struct pthread_condattr_t_ {
   int pshared;
 };
 
-#define RW_MAGIC    0x19283746
-
-struct pthread_rwlock_t_ {
-    pthread_mutex_t rw_lock;         /* basic lock on this struct */
-    pthread_cond_t  rw_condreaders;  /* for reader threads waiting */
-    pthread_cond_t  rw_condwriters;  /* for writer threads waiting */
-    int             rw_magic;        /* for error checking */
-    int             rw_nwaitreaders; /* the number waiting */
-    int             rw_nwaitwriters; /* the number waiting */
-    int             rw_refcount;     /* -1 if writer has the lock,
-                                        else # readers holding the lock */
-};
-
-struct pthread_rwlockattr_t_ {
-  int pshared;
-};
 
 struct ThreadKeyAssoc {
   /*
@@ -274,27 +257,18 @@ struct ThreadKeyAssoc {
  */
 #define EXCEPTION_PTHREAD_SERVICES	\
      MAKE_SOFTWARE_EXCEPTION( SE_ERROR, \
-			      _PTHREAD_SERVICES_FACILITY, \
-			      _PTHREAD_SERVICES_ERROR )
+			      PTHREAD_SERVICES_FACILITY, \
+			      PTHREAD_SERVICES_ERROR )
 
-#define _PTHREAD_SERVICES_FACILITY		0xBAD
-#define _PTHREAD_SERVICES_ERROR			0xDEED
 
-/*
- * Services available through EXCEPTION_PTHREAD_SERVICES
- */
-#define _PTHREAD_EPS_CANCEL       0
-#define _PTHREAD_EPS_EXIT         1
+#define PTHREAD_SERVICES_FACILITY		0xBAD
+#define PTHREAD_SERVICES_ERROR			0xDEED
 
 #else
 
 #ifdef __cplusplus
 
-/*
- * Exceptions similar to the SEH exceptions above.
- */
-class Pthread_exception_cancel {};
-class Pthread_exception_exit {};
+class Pthread_exception {};
 
 #else /* __cplusplus */
 
@@ -313,7 +287,12 @@ extern pthread_key_t _pthread_selfThreadKey;
 extern pthread_key_t _pthread_cleanupKey;
 extern CRITICAL_SECTION _pthread_mutex_test_init_lock;
 extern CRITICAL_SECTION _pthread_cond_test_init_lock;
-extern CRITICAL_SECTION _pthread_rwlock_test_init_lock;
+
+/* Declared in misc.c */
+#ifdef NEED_CALLOC
+#define calloc(n, s) _pthread_calloc(n, s)
+void *_pthread_calloc(size_t n, size_t s);
+#endif
 
 
 #ifdef __cplusplus
@@ -335,12 +314,7 @@ void _pthread_threadDestroy (pthread_t tid);
 
 void _pthread_cleanupStack (void);
 
-#if ! defined (__MINGW32__) || defined (__MSVCRT__)
-unsigned PT_STDCALL
-#else
-void
-#endif
-_pthread_threadStart (ThreadParms * threadParms);
+void *_pthread_threadStart (ThreadParms * threadParms);
 
 void _pthread_callUserDestroyRoutines (pthread_t thread);
 
@@ -352,6 +326,12 @@ void _pthread_tkAssocDestroy (ThreadKeyAssoc * assoc);
 
 int _pthread_sem_timedwait (sem_t * sem,
 			    const struct timespec * abstime);
+
+#ifdef NEED_SEM
+void _pthread_decrease_semaphore(sem_t * sem);
+BOOL _pthread_increase_semaphore(sem_t * sem,
+                                 unsigned int n);
+#endif /* NEED_SEM */
 
 #ifdef __cplusplus
 }
@@ -365,7 +345,7 @@ int _pthread_sem_timedwait (sem_t * sem,
  *
  * Patch by Anders Norlander <anorland@hem2.passagen.se>
  */
-#if defined(__CYGWIN32__) || defined(__CYGWIN__)
+#if defined(__CYGWIN32__) || defined(__CYGWIN__) || defined(_PTHREAD_CREATETHREAD)
 
 /* 
  * Macro uses args so we can cast start_proc to LPTHREAD_START_ROUTINE

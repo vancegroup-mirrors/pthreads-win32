@@ -9,5 +9,14 @@
 /* Define if you have the <signal.h> header file.  */
 #undef HAVE_SIGNAL_H
 
-/* Define if you have the <windows.h> header file.  */
-#undef HAVE_WINDOWS_H
+/* Define if you don't have errno. (eg. WinCE) */
+#undef NEED_ERRNO
+
+/* Define if you don't have calloc. (eg. WinCE)  */
+#undef NEED_CALLOC
+
+/* Define if you don't have ftime. (eg. WinCE)  */
+#undef NEED_FTIME
+
+/* Define if you don't have semaphores. (eg. WinCE)  */
+#undef NEED_SEM

@@ -163,6 +163,10 @@ pthread_self (void)
 
 	  self->thread = GetCurrentThreadId ();
 
+#ifdef UNDER_CE
+	  /* DuplicateHandle does not exist on WinCE */
+	  self->threadH = GetCurrentThread();
+#else
 	  if( !DuplicateHandle(
 			       GetCurrentProcess(),
 			       GetCurrentThread(),
@@ -175,6 +179,7 @@ pthread_self (void)
 	      free( self );
 	      return (NULL);
 	    }
+#endif
 	}
 
       pthread_setspecific (_pthread_selfThreadKey, self);
@@ -314,7 +319,7 @@ CancelableWait (HANDLE waitHandle, DWORD timeout)
 
               DWORD exceptionInformation[3];
 
-              exceptionInformation[0] = (DWORD) (_PTHREAD_EPS_CANCEL);
+              exceptionInformation[0] = (DWORD) (0);
               exceptionInformation[1] = (DWORD) (0);
               exceptionInformation[2] = (DWORD) (0);
 
@@ -328,7 +333,7 @@ CancelableWait (HANDLE waitHandle, DWORD timeout)
 
 #ifdef __cplusplus
 
-	      throw Pthread_exception_cancel();
+	      throw Pthread_exception();
 
 #endif /* __cplusplus */
 
@@ -361,4 +366,17 @@ pthreadCancelableTimedWait (HANDLE waitHandle, DWORD timeout)
   return (CancelableWait(waitHandle, timeout));
 }
 
+#ifdef NEED_CALLOC
+void 
+*_pthread_calloc(size_t n, size_t s) {
+	unsigned int m = n*s;
+	void *p;
+	
+	p = malloc(m);
+	if (p == NULL) return NULL;
+	
+	memset(p, 0, m);
 
+	return p;
+}
+#endif

@@ -1,11 +1,12 @@
 ; pthread.def
-; Last updated: $Date: 1999/09/15 00:56:22 $
+; Last updated: $Date: 1999/11/04 14:56:51 $
 
 ; Currently unimplemented functions are commented out.
 
 LIBRARY pthread
 
 EXPORTS
+_pthread_processInitialize
 ;pthread_atfork
 pthread_attr_destroy
 pthread_attr_getdetachstate
@@ -88,16 +89,6 @@ sem_close
 sem_unlink
 sem_getvalue
 ;
-; Read/Write Locks
-;
-pthread_rwlock_init
-pthread_rwlock_destroy
-pthread_rwlock_tryrdlock
-pthread_rwlock_trywrlock
-pthread_rwlock_rdlock
-pthread_rwlock_wrlock
-pthread_rwlock_unlock
-;
 ; Non-portable but useful
 ;
 pthread_mutexattr_setforcecs_np
@@ -108,3 +99,4 @@ pthreadCancelableTimedWait
 ;
 pthread_push_cleanup
 pthread_pop_cleanup
+
