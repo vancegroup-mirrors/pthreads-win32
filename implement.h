@@ -73,23 +73,23 @@ typedef enum {
 PThreadDemise;
 
 struct pthread_t_ {
-  DWORD thread;
-  HANDLE threadH;
-  PThreadState state;
-  PThreadDemise demise;
-  void *exitStatus;
-  void *parms;
-  int ptErrno;
-  int detachState;
-  pthread_mutex_t cancelLock;  /* Used for async-cancel safety */
-  int cancelState;
-  int cancelType;
-  HANDLE cancelEvent;
+  DWORD             thread;
+  HANDLE            threadH;
+  PThreadState      state;
+  PThreadDemise     demise;
+  void *            exitStatus;
+  void *            parms;
+  int               ptErrno;
+  int               detachState;
+  CriticalSection   cancelLock;  /* Used for async-cancel safety */
+  int               cancelState;
+  int               cancelType;
+  HANDLE            cancelEvent;
 #if HAVE_SIGSET_T
-  sigset_t sigmask;
+  sigset_t          sigmask;
 #endif /* HAVE_SIGSET_T */
-  int implicit:1;
-  void *keys;
+  int               implicit:1;
+  void *            keys;
 };
 
 
@@ -99,13 +99,13 @@ struct pthread_t_ {
 #define PTW32_ATTR_VALID ((unsigned long) 0xC4C0FFEE)
 
 struct pthread_attr_t_ {
-  unsigned long valid;
-  void *stackaddr;
-  size_t stacksize;
-  int detachstate;
-  int priority;
+  unsigned long     valid;
+  void *            stackaddr;
+  size_t            stacksize;
+  int               detachstate;
+  int               priority;
 #if HAVE_SIGSET_T
-  sigset_t sigmask;
+  sigset_t          sigmask;
 #endif /* HAVE_SIGSET_T */
 };
 
@@ -147,26 +147,26 @@ struct pthread_attr_t_ {
 #define PTW32_OBJECT_INVALID   NULL
 
 struct pthread_mutexattr_t_ {
-  int pshared;
-  int type;
+  int               pshared;
+  int               type;
 };
 
 struct pthread_mutex_t_ {
-  long lock_idx;
-  long try_lock;
-  int pshared;
-  int type;
-  pthread_t owner;
-  long waiters;                      /* These last elements ensure fairness */
-  pthread_t lastOwner;               /* and guard against canceled threads. */
-  pthread_t lastWaiter;
+  long              lock_idx;
+  long              try_lock;
+  int               pshared;
+  int               type;
+  pthread_t         owner;
+  long              waiters;     /* These last elements ensure fairness */
+  pthread_t         lastOwner;   /* and guard against canceled threads. */
+  pthread_t         lastWaiter;
 };
 
 struct pthread_key_t_ {
-  DWORD key;
+  DWORD             key;
   void (*destructor) (void *);
-  pthread_mutex_t threadsLock;
-  void *threads;
+  pthread_mutex_t   threadsLock;
+  void *            threads;
 };
 
 
@@ -174,9 +174,9 @@ typedef struct ThreadParms ThreadParms;
 typedef struct ThreadKeyAssoc ThreadKeyAssoc;
 
 struct ThreadParms {
-  pthread_t tid;
-  void *(*start) (void *);
-  void *arg;
+  pthread_t         tid;
+  void *(*start)   (void *);
+  void *            arg;
 };
 
 
@@ -196,23 +196,23 @@ struct pthread_cond_t_ {
 
 
 struct pthread_condattr_t_ {
-  int pshared;
+  int               pshared;
 };
 
 #define PTW32_RWLOCK_MAGIC 0xfacade2
 
 struct pthread_rwlock_t_ {
-  pthread_mutex_t mtxExclusiveAccess;
-  pthread_mutex_t mtxSharedAccessCompleted;
-  pthread_cond_t  cndSharedAccessCompleted;
-  int             nSharedAccessCount;
-  int             nExclusiveAccessCount;
-  int             nCompletedSharedAccessCount;
-  int             nMagic;
+  pthread_mutex_t   mtxExclusiveAccess;
+  pthread_mutex_t   mtxSharedAccessCompleted;
+  pthread_cond_t    cndSharedAccessCompleted;
+  int               nSharedAccessCount;
+  int               nExclusiveAccessCount;
+  int               nCompletedSharedAccessCount;
+  int               nMagic;
 };
 
 struct pthread_rwlockattr_t_ {
-  int pshared;
+  int               pshared;
 };
 
 struct ThreadKeyAssoc {
@@ -266,11 +266,11 @@ struct ThreadKeyAssoc {
    *
    *
    */
-  pthread_mutex_t lock;
-  pthread_t thread;
-  pthread_key_t key;
-  ThreadKeyAssoc *nextKey;
-  ThreadKeyAssoc *nextThread;
+  pthread_mutex_t   lock;
+  pthread_t         thread;
+  pthread_key_t     key;
+  ThreadKeyAssoc *  nextKey;
+  ThreadKeyAssoc *  nextThread;
 };
 
 

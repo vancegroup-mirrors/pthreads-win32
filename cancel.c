@@ -44,7 +44,7 @@ ptw32_cancel_thread(pthread_t thread)
 {
   HANDLE threadH = thread->threadH;
 
-  (void) pthread_mutex_lock(&thread->cancelLock);
+  EnterCriticalSection(&thread->cancelLock);
 
   SuspendThread(threadH);
 
@@ -60,7 +60,7 @@ ptw32_cancel_thread(pthread_t thread)
       ResumeThread(threadH);
     }
 
-  (void) pthread_mutex_unlock(&thread->cancelLock);
+  LeaveCriticalSection(&thread->cancelLock);
 }
 
 
@@ -118,7 +118,7 @@ pthread_setcancelstate (int state, int *oldstate)
   /*
    * Lock for async-cancel safety.
    */
-  (void) pthread_mutex_lock(&self->cancelLock);
+  EnterCriticalSection(&self->cancelLock);
 
   if (oldstate != NULL)
     {
@@ -135,13 +135,13 @@ pthread_setcancelstate (int state, int *oldstate)
       && WaitForSingleObject(self->cancelEvent, 0) == WAIT_OBJECT_0)
     {
       ResetEvent(self->cancelEvent);
-      (void) pthread_mutex_unlock(&self->cancelLock);
+      LeaveCriticalSection(&self->cancelLock);
       ptw32_throw(PTW32_EPS_CANCEL);
 
       /* Never reached */
     }
 
-  (void) pthread_mutex_unlock(&self->cancelLock);
+  LeaveCriticalSection(&self->cancelLock);
 
   return (result);
 
@@ -202,7 +202,7 @@ pthread_setcanceltype (int type, int *oldtype)
   /*
    * Lock for async-cancel safety.
    */
-  (void) pthread_mutex_lock(&self->cancelLock);
+  EnterCriticalSection(&self->cancelLock);
 
   if (oldtype != NULL)
     {
@@ -219,13 +219,13 @@ pthread_setcanceltype (int type, int *oldtype)
       && WaitForSingleObject(self->cancelEvent, 0) == WAIT_OBJECT_0)
     {
       ResetEvent(self->cancelEvent);
-      (void) pthread_mutex_unlock(&self->cancelLock);
+      LeaveCriticalSection(&self->cancelLock);
       ptw32_throw(PTW32_EPS_CANCEL);
 
       /* Never reached */
     }
 
-  (void) pthread_mutex_unlock(&self->cancelLock);
+  LeaveCriticalSection(&self->cancelLock);
 
   return (result);
 
@@ -333,14 +333,14 @@ pthread_cancel (pthread_t thread)
   /*
    * Lock for async-cancel safety.
    */
-  (void) pthread_mutex_lock(&self->cancelLock);
+  EnterCriticalSection(&self->cancelLock);
 
   if (thread->cancelType == PTHREAD_CANCEL_ASYNCHRONOUS
       && thread->cancelState == PTHREAD_CANCEL_ENABLE )
     {
       if (cancel_self)
 	{
-	  (void) pthread_mutex_unlock(&self->cancelLock);
+	  LeaveCriticalSection(&self->cancelLock);
 	  ptw32_throw(PTW32_EPS_CANCEL);
 
 	  /* Never reached */
@@ -359,7 +359,7 @@ pthread_cancel (pthread_t thread)
 	}
     }
 
-  (void) pthread_mutex_unlock(&self->cancelLock);
+  LeaveCriticalSection(&self->cancelLock);
 
   return (result);
 

@@ -185,7 +185,7 @@ ExceptionFilter (EXCEPTION_POINTERS * ep, DWORD * ei)
            */
           pthread_t self = pthread_self();
 
-          (void) pthread_mutex_destroy(&self->cancelLock);
+          DeleteCriticalSection(&self->cancelLock);
           ptw32_callUserDestroyRoutines(self);
 
           return EXCEPTION_CONTINUE_SEARCH;
@@ -222,7 +222,7 @@ ptw32_terminate ()
   pthread_mutex_unlock(&termLock);
 #endif
   set_terminate(ptw32_oldTerminate);
-  (void) pthread_mutex_destroy(&self->cancelLock);
+  DeleteCriticalSection(&self->cancelLock);
   ptw32_callUserDestroyRoutines(self);
   terminate();
 }
@@ -258,14 +258,12 @@ ptw32_threadStart (ThreadParms * threadParms)
    * before it returns us the thread handle, and so we do it here.
    */
   self->thread = GetCurrentThreadId ();
-  if (pthread_mutex_lock(&self->cancelLock) == 0)
-    {
-      /* 
-       * We got the lock which means that our creator has
-       * our thread handle. Unlock and continue on.
-       */
-      (void) pthread_mutex_unlock(&self->cancelLock);
-    }
+  EnterCriticalSection(&self->cancelLock);
+  /* 
+   * We got the lock which means that our creator has
+   * our thread handle. Unlock and continue on.
+   */
+   LeaveCriticalSection(&self->cancelLock);
 #endif
 
   pthread_setspecific (ptw32_selfThreadKey, self);
@@ -353,7 +351,7 @@ ptw32_threadStart (ThreadParms * threadParms)
        * and release the exception out of thread scope.
        */
       status = self->exitStatus = PTHREAD_CANCELED;
-      (void) pthread_mutex_destroy(&self->cancelLock);
+      DeleteCriticalSection(&self->cancelLock);
       (void) set_terminate(ptw32_oldTerminate);
       ptw32_callUserDestroyRoutines(self);
       throw;
@@ -377,7 +375,7 @@ ptw32_threadStart (ThreadParms * threadParms)
 
 #endif /* _MSC_VER */
 
-  (void) pthread_mutex_destroy(&self->cancelLock);
+  DeleteCriticalSection(&self->cancelLock);
 
 #if 1
   if (self->detachState == PTHREAD_CREATE_DETACHED)

@@ -390,7 +390,7 @@ ptw32_new (void)
       t->detachState = PTHREAD_CREATE_JOINABLE;
       t->cancelState = PTHREAD_CANCEL_ENABLE;
       t->cancelType  = PTHREAD_CANCEL_DEFERRED;
-      t->cancelLock  = PTHREAD_MUTEX_INITIALIZER;
+      InitializeCriticalSection(t->cancelLock);
     }
 
   return t;

@@ -1,3 +1,20 @@
+2001-02-13  Ross Johnson  <rpj@setup1.ise.canberra.edu.au>
+
+	* misc.c (ptw32_new): Change cancelLock to be a
+	critical section type instead of pthread_mutex_t
+	because we want to use the cancel routines in
+	pthread_mutex_* routines - this avoids any
+	recursive problems.
+	* cancel.c (ptw32_cancel_thread): Likewise.
+	(pthread_setcancelstate): Likewise.
+	(pthread_setcanceltype): Likewise.
+	(pthread_cancel): Likewise.
+	* private.c (ExceptionFilter): Likewise.
+	(ptw32_terminate): Likewise.
+	(ptw32_threadStart): Likewise.
+	* create.c (pthread_create): Likewise.
+	* implement.h (pthread_t_.cancelLock): Likewise.
+
 2001-02-12  Ross Johnson  <rpj@setup1.ise.canberra.edu.au>
 
 	* mutex.c (pthread_mutex_init): Revamped yet again.

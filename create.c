@@ -157,7 +157,8 @@ pthread_create (pthread_t * tid,
    * This lock will force pthread_threadStart() to wait until we have
    * the thread handle.
    */
-  (void) pthread_mutex_lock(&thread->cancelLock);
+  InitializeCriticalSection(&thread->cancelLock);
+  EnterCriticalSection(&thread->cancelLock);
 
   thread->threadH = threadH = (HANDLE)
     _beginthread (
@@ -182,7 +183,7 @@ pthread_create (pthread_t * tid,
       SuspendThread (threadH);
     }
 
-  (void) pthread_mutex_unlock(&thread->cancelLock);
+  LeaveCriticalSection(&thread->cancelLock);
 
 #endif /* __MINGW32__ && ! __MSVCRT__ */
 
