@@ -9,26 +9,26 @@
  *
  *      Pthreads-win32 - POSIX Threads Library for Win32
  *      Copyright(C) 1998 John E. Bossom
- *      Copyright(C) 1999,2005 Pthreads-win32 contributors
- * 
+ *      Copyright(C) 1999,2012 Pthreads-win32 contributors
+ *
  *      Contact Email: Ross.Johnson@homemail.com.au
- * 
+ *
  *      The current list of contributors is contained
  *      in the file CONTRIBUTORS included with the source
  *      code distribution. The list can also be seen at the
  *      following World Wide Web location:
  *      http://sources.redhat.com/pthreads-win32/contributors.html
- * 
+ *
  *      This library is free software; you can redistribute it and/or
  *      modify it under the terms of the GNU Lesser General Public
  *      License as published by the Free Software Foundation; either
  *      version 2 of the License, or (at your option) any later version.
- * 
+ *
  *      This library is distributed in the hope that it will be useful,
  *      but WITHOUT ANY WARRANTY; without even the implied warranty of
  *      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *      Lesser General Public License for more details.
- * 
+ *
  *      You should have received a copy of the GNU Lesser General Public
  *      License along with this library in the file COPYING.LIB;
  *      if not, write to the Free Software Foundation, Inc.,
@@ -37,6 +37,10 @@
 
 #if !defined(_IMPLEMENT_H)
 #define _IMPLEMENT_H
+
+#if !defined(PTW32_CONFIG_H) && !defined(_PTHREAD_TEST_H_)
+# error "config.h was not #included"
+#endif
 
 #if !defined(_WIN32_WINNT)
 # define _WIN32_WINNT 0x0400
@@ -49,6 +53,40 @@
  */
 #if defined(WINCE)
 typedef VOID (APIENTRY *PAPCFUNC)(DWORD dwParam);
+#endif
+
+/*
+ * Designed to allow error values to be set and retrieved in builds where
+ * MSCRT libraries are statically linked to DLLs.
+ */
+#if ! defined(WINCE) && \
+    (( defined(PTW32_CONFIG_MINGW) && __MSVCRT_VERSION__ >= 0x0800 ) || \
+    ( defined(_MSC_VER) && _MSC_VER >= 1400 ))  /* MSVC8+ */
+#  if defined(PTW32_CONFIG_MINGW)
+__attribute__((unused))
+#  endif
+static int ptw32_get_errno(void) { int err = 0; _get_errno(&err); return err; }
+#  define PTW32_GET_ERRNO() ptw32_get_errno()
+#  if defined(PTW32_USES_SEPARATE_CRT)
+#    if defined(PTW32_CONFIG_MINGW)
+__attribute__((unused))
+#    endif
+static void ptw32_set_errno(int err) { _set_errno(err); SetLastError(err); }
+#    define PTW32_SET_ERRNO(err) ptw32_set_errno(err)
+#  else
+#    define PTW32_SET_ERRNO(err) _set_errno(err)
+#  endif
+#else
+#  define PTW32_GET_ERRNO() (errno)
+#  if defined(PTW32_USES_SEPARATE_CRT)
+#    if defined(PTW32_CONFIG_MINGW)
+__attribute__((unused))
+#    endif
+static void ptw32_set_errno(int err) { errno = err; SetLastError(err); }
+#    define PTW32_SET_ERRNO(err) ptw32_set_errno(err)
+#  else
+#    define PTW32_SET_ERRNO(err) (errno = (err))
+#  endif
 #endif
 
 /*
@@ -79,10 +117,13 @@ typedef VOID (APIENTRY *PAPCFUNC)(DWORD dwParam);
 #include "semaphore.h"
 #include "sched.h"
 
-#if ( defined(HAVE_C_INLINE) || defined(__cplusplus) ) && defined(PTW32_BUILD_INLINED)
-# define INLINE inline
-#else
-# define INLINE
+/* MSVC 7.1 doesn't like complex #if expressions */
+#define INLINE
+#if defined(PTW32_BUILD_INLINED)
+#  if defined(HAVE_C_INLINE) || defined(__cplusplus)
+#    undef INLINE
+#    define INLINE inline
+#  endif
 #endif
 
 #if defined(PTW32_CONFIG_MSVC6)
@@ -117,7 +158,7 @@ typedef VOID (APIENTRY *PAPCFUNC)(DWORD dwParam);
 /*
  * Don't allow the linker to optimize away autostatic.obj in static builds.
  */
-#if defined(PTW32_STATIC_LIB)
+#if defined(PTW32_STATIC_LIB) && defined(PTW32_BUILD)
   void ptw32_autostatic_anchor(void);
 # if defined(PTW32_CONFIG_MINGW)
     __attribute__((unused, used))
@@ -153,7 +194,6 @@ typedef struct ptw32_mcs_node_t_*    ptw32_mcs_lock_t;
 typedef struct ptw32_robust_node_t_  ptw32_robust_node_t;
 typedef struct ptw32_thread_t_       ptw32_thread_t;
 
-
 struct ptw32_thread_t_
 {
   unsigned __int64 seqNumber;	/* Process-unique thread sequence number */
@@ -184,7 +224,10 @@ struct ptw32_thread_t_
   int cancelState;
   int cancelType;
   int implicit:1;
-  DWORD thread;			/* Win32 thread ID */
+  DWORD thread;			/* Windows thread ID */
+#if ! defined(WINCE)
+  size_t cpuset;		/* Thread CPU affinity set */
+#endif
 #if defined(_UWIN)
   DWORD dummy[5];
 #endif
@@ -192,7 +235,7 @@ struct ptw32_thread_t_
 };
 
 
-/* 
+/*
  * Special value to mark attribute objects as valid.
  */
 #define PTW32_ATTR_VALID ((unsigned long) 0xC4C0FFEE)
@@ -223,7 +266,7 @@ struct pthread_attr_t_
 struct sem_t_
 {
   int value;
-  pthread_mutex_t lock;
+  ptw32_mcs_lock_t lock;
   HANDLE sem;
 #if defined(NEED_SEM)
   int leftToUnblock;
@@ -400,6 +443,12 @@ struct pthread_rwlockattr_t_
   int pshared;
 };
 
+typedef union
+{
+  char cpuset[CPU_SETSIZE/8];
+  size_t _cpuset;
+} _sched_cpu_set_vector_;
+
 typedef struct ThreadKeyAssoc ThreadKeyAssoc;
 
 struct ThreadKeyAssoc
@@ -483,7 +532,7 @@ struct ThreadKeyAssoc
    *              The pthread_key_t->threads attribute is the head of
    *              a chain of associations that runs through the
    *              nextThreads link. This chain provides the 1 to many
-   *              relationship between a pthread_key_t and all the 
+   *              relationship between a pthread_key_t and all the
    *              PThreads that have called pthread_setspecific for
    *              this pthread_key_t.
    *
@@ -725,8 +774,10 @@ extern "C"
 #       endif
 #   endif
 #else
-#       include <process.h>
+#   if ! defined(WINCE)
+#     include <process.h>
 #   endif
+#endif
 
 
 /*
@@ -938,7 +989,7 @@ extern "C"
 
 #if defined(NEED_CREATETHREAD)
 
-/* 
+/*
  * Macro uses args so we can cast start_proc to LPTHREAD_START_ROUTINE
  * in order to avoid warnings because of return type
  */
