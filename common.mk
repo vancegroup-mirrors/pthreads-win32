@@ -4,54 +4,32 @@ RESOURCE_OBJS	= \
 		version.$(RESEXT)
 
 # pthread.c aggregates all source into a single compilation unit for inlinability
-DLL_INLINED_OBJS = \
+DLL_OBJS	= \
 		pthread.$(OBJEXT)
 
-# Aggregate modules for inlinability
-DLL_OBJS	= \
-		attr.$(OBJEXT) \
-		barrier.$(OBJEXT) \
-		cancel.$(OBJEXT) \
-		cleanup.$(OBJEXT) \
-		condvar.$(OBJEXT) \
-		create.$(OBJEXT) \
-		dll.$(OBJEXT) \
-		errno.$(OBJEXT) \
-		exit.$(OBJEXT) \
-		fork.$(OBJEXT) \
-		global.$(OBJEXT) \
-		misc.$(OBJEXT) \
-		mutex.$(OBJEXT) \
-		nonportable.$(OBJEXT) \
-		private.$(OBJEXT) \
-		rwlock.$(OBJEXT) \
-		sched.$(OBJEXT) \
-		semaphore.$(OBJEXT) \
-		signal.$(OBJEXT) \
-		spin.$(OBJEXT) \
-		sync.$(OBJEXT) \
-		tsd.$(OBJEXT)
-
 # Separate modules for minimising the size of statically linked images
-SMALL_STATIC_OBJS	= \
+STATIC_OBJS	= \
 		autostatic.$(OBJEXT) \
 		cleanup.$(OBJEXT) \
 		create.$(OBJEXT) \
 		dll.$(OBJEXT) \
 		errno.$(OBJEXT) \
-		fork.$(OBJEXT) \
 		global.$(OBJEXT) \
 		pthread_attr_destroy.$(OBJEXT) \
+		pthread_attr_getaffinity_np.$(OBJEXT) \
 		pthread_attr_getdetachstate.$(OBJEXT) \
 		pthread_attr_getinheritsched.$(OBJEXT) \
+		pthread_attr_getname_np.$(OBJEXT) \
 		pthread_attr_getschedparam.$(OBJEXT) \
 		pthread_attr_getschedpolicy.$(OBJEXT) \
 		pthread_attr_getscope.$(OBJEXT) \
 		pthread_attr_getstackaddr.$(OBJEXT) \
 		pthread_attr_getstacksize.$(OBJEXT) \
 		pthread_attr_init.$(OBJEXT) \
+		pthread_attr_setaffinity_np.$(OBJEXT) \
 		pthread_attr_setdetachstate.$(OBJEXT) \
 		pthread_attr_setinheritsched.$(OBJEXT) \
+		pthread_attr_setname_np.$(OBJEXT) \
 		pthread_attr_setschedparam.$(OBJEXT) \
 		pthread_attr_setschedpolicy.$(OBJEXT) \
 		pthread_attr_setscope.$(OBJEXT) \
@@ -78,12 +56,14 @@ SMALL_STATIC_OBJS	= \
 		pthread_equal.$(OBJEXT) \
 		pthread_exit.$(OBJEXT) \
 		pthread_getconcurrency.$(OBJEXT) \
+		pthread_getname_np.$(OBJEXT) \
 		pthread_getschedparam.$(OBJEXT) \
 		pthread_getspecific.$(OBJEXT) \
 		pthread_getunique_np.$(OBJEXT) \
 		pthread_getw32threadhandle_np.$(OBJEXT) \
 		pthread_join.$(OBJEXT) \
 		pthread_timedjoin_np.$(OBJEXT) \
+		pthread_tryjoin_np.$(OBJEXT) \
 		pthread_key_create.$(OBJEXT) \
 		pthread_key_delete.$(OBJEXT) \
 		pthread_kill.$(OBJEXT) \
@@ -120,9 +100,11 @@ SMALL_STATIC_OBJS	= \
 		pthread_rwlockattr_init.$(OBJEXT) \
 		pthread_rwlockattr_setpshared.$(OBJEXT) \
 		pthread_self.$(OBJEXT) \
+		pthread_setaffinity.$(OBJEXT) \
 		pthread_setcancelstate.$(OBJEXT) \
 		pthread_setcanceltype.$(OBJEXT) \
 		pthread_setconcurrency.$(OBJEXT) \
+		pthread_setname_np.$(OBJEXT) \
 		pthread_setschedparam.$(OBJEXT) \
 		pthread_setspecific.$(OBJEXT) \
 		pthread_spin_destroy.$(OBJEXT) \
@@ -158,6 +140,7 @@ SMALL_STATIC_OBJS	= \
 		sched_get_priority_max.$(OBJEXT) \
 		sched_get_priority_min.$(OBJEXT) \
 		sched_getscheduler.$(OBJEXT) \
+		sched_setaffinity.$(OBJEXT) \
 		sched_setscheduler.$(OBJEXT) \
 		sched_yield.$(OBJEXT) \
 		sem_close.$(OBJEXT) \
@@ -174,92 +157,7 @@ SMALL_STATIC_OBJS	= \
 		signal.$(OBJEXT) \
 		w32_CancelableWait.$(OBJEXT)
 
-INCL		= \
-		config.h \
-		implement.h \
-		need_errno.h \
-		pthread.h \
-		semaphore.h \
-		need_errno.h
-
-ATTR_SRCS	= \
-		pthread_attr_init.c \
-		pthread_attr_destroy.c \
-		pthread_attr_getdetachstate.c \
-		pthread_attr_setdetachstate.c \
-		pthread_attr_getscope.c \
-		pthread_attr_setscope.c \
-		pthread_attr_getstackaddr.c \
-		pthread_attr_setstackaddr.c \
-		pthread_attr_getstacksize.c \
-		pthread_attr_setstacksize.c
-
-BARRIER_SRCS = \
-		pthread_barrier_init.c \
-		pthread_barrier_destroy.c \
-		pthread_barrier_wait.c \
-		pthread_barrierattr_init.c \
-		pthread_barrierattr_destroy.c \
-		pthread_barrierattr_setpshared.c \
-		pthread_barrierattr_getpshared.c
-
-CANCEL_SRCS	= \
-		pthread_setcancelstate.c \
-		pthread_setcanceltype.c \
-		pthread_testcancel.c \
-		pthread_cancel.c 
-
-CONDVAR_SRCS	= \
-		pthread_condattr_destroy.c \
-		pthread_condattr_getpshared.c \
-		pthread_condattr_init.c \
-		pthread_condattr_setpshared.c \
-		pthread_cond_destroy.c \
-		pthread_cond_init.c \
-		pthread_cond_signal.c \
-		pthread_cond_wait.c
-
-EXIT_SRCS	= \
-		pthread_exit.c
-
-MISC_SRCS	= \
-		pthread_equal.c \
-		pthread_getconcurrency.c \
-		pthread_kill.c \
-		pthread_once.c \
-		pthread_self.c \
-		pthread_setconcurrency.c \
-		w32_CancelableWait.c
-
-MUTEX_SRCS	= \
-		pthread_mutex_init.c \
-		pthread_mutex_destroy.c \
-		pthread_mutexattr_init.c \
-		pthread_mutexattr_destroy.c \
-		pthread_mutexattr_getpshared.c \
-		pthread_mutexattr_setpshared.c \
-		pthread_mutexattr_settype.c \
-		pthread_mutexattr_gettype.c \
-		pthread_mutexattr_setrobust.c \
-		pthread_mutexattr_getrobust.c \
-		pthread_mutex_lock.c \
-		pthread_mutex_timedlock.c \
-		pthread_mutex_unlock.c \
-		pthread_mutex_trylock.c \
-		pthread_mutex_consistent.c
-
-NONPORTABLE_SRCS = \
-		pthread_mutexattr_setkind_np.c \
-		pthread_mutexattr_getkind_np.c \
-		pthread_getw32threadhandle_np.c \
-		pthread_getunique_np.c \
-		pthread_timedjoin_np.c \
-		pthread_delay_np.c \
-		pthread_num_processors_np.c \
-		pthread_win32_attach_detach_np.c \
-		pthread_timechange_handler_np.c 
-
-PRIVATE_SRCS	= \
+PTHREAD_SRCS	= \
 		ptw32_MCS_lock.c \
 		ptw32_is_attr.c \
 		ptw32_processInitialize.c \
@@ -281,9 +179,78 @@ PRIVATE_SRCS	= \
 		ptw32_mutex_check_need_init.c \
 		ptw32_rwlock_check_need_init.c \
 		ptw32_rwlock_cancelwrwait.c \
-		ptw32_spinlock_check_need_init.c
-
-RWLOCK_SRCS	= \
+		ptw32_spinlock_check_need_init.c \
+		pthread_attr_init.c \
+		pthread_attr_destroy.c \
+		pthread_attr_getaffinity_np.c \
+		pthread_attr_setaffinity_np.c \
+		pthread_attr_getdetachstate.c \
+		pthread_attr_setdetachstate.c \
+		pthread_attr_getname_np.c \
+		pthread_attr_setname_np.c \
+		pthread_attr_getscope.c \
+		pthread_attr_setscope.c \
+		pthread_attr_getstackaddr.c \
+		pthread_attr_setstackaddr.c \
+		pthread_attr_getstacksize.c \
+		pthread_attr_setstacksize.c \
+		pthread_barrier_init.c \
+		pthread_barrier_destroy.c \
+		pthread_barrier_wait.c \
+		pthread_barrierattr_init.c \
+		pthread_barrierattr_destroy.c \
+		pthread_barrierattr_setpshared.c \
+		pthread_barrierattr_getpshared.c \
+		pthread_setcancelstate.c \
+		pthread_setcanceltype.c \
+		pthread_testcancel.c \
+		pthread_cancel.c \
+		pthread_condattr_destroy.c \
+		pthread_condattr_getpshared.c \
+		pthread_condattr_init.c \
+		pthread_condattr_setpshared.c \
+		pthread_cond_destroy.c \
+		pthread_cond_init.c \
+		pthread_cond_signal.c \
+		pthread_cond_wait.c \
+		create.c \
+		cleanup.c \
+		dll.c \
+		autostatic.c \
+		errno.c \
+		pthread_exit.c \
+		global.c \
+		pthread_equal.c \
+		pthread_getconcurrency.c \
+		pthread_kill.c \
+		pthread_once.c \
+		pthread_self.c \
+		pthread_setconcurrency.c \
+		w32_CancelableWait.c \
+		pthread_mutex_init.c \
+		pthread_mutex_destroy.c \
+		pthread_mutexattr_init.c \
+		pthread_mutexattr_destroy.c \
+		pthread_mutexattr_getpshared.c \
+		pthread_mutexattr_setpshared.c \
+		pthread_mutexattr_settype.c \
+		pthread_mutexattr_gettype.c \
+		pthread_mutexattr_setrobust.c \
+		pthread_mutexattr_getrobust.c \
+		pthread_mutex_lock.c \
+		pthread_mutex_timedlock.c \
+		pthread_mutex_unlock.c \
+		pthread_mutex_trylock.c \
+		pthread_mutex_consistent.c \
+		pthread_mutexattr_setkind_np.c \
+		pthread_mutexattr_getkind_np.c \
+		pthread_getw32threadhandle_np.c \
+		pthread_getunique_np.c \
+		pthread_setaffinity.c \
+		pthread_delay_np.c \
+		pthread_num_processors_np.c \
+		pthread_win32_attach_detach_np.c \
+		pthread_timechange_handler_np.c \
 		pthread_rwlock_init.c \
 		pthread_rwlock_destroy.c \
 		pthread_rwlockattr_init.c \
@@ -296,24 +263,23 @@ RWLOCK_SRCS	= \
 		pthread_rwlock_timedwrlock.c \
 		pthread_rwlock_unlock.c \
 		pthread_rwlock_tryrdlock.c \
-		pthread_rwlock_trywrlock.c
-
-SCHED_SRCS	= \
+		pthread_rwlock_trywrlock.c \
 		pthread_attr_setschedpolicy.c \
 		pthread_attr_getschedpolicy.c \
 		pthread_attr_setschedparam.c \
 		pthread_attr_getschedparam.c \
 		pthread_attr_setinheritsched.c \
 		pthread_attr_getinheritsched.c \
+		pthread_getname_np.c \
+		pthread_setname_np.c \
 		pthread_setschedparam.c \
 		pthread_getschedparam.c \
 		sched_get_priority_max.c \
 		sched_get_priority_min.c \
 		sched_setscheduler.c \
 		sched_getscheduler.c \
-		sched_yield.c
-
-SEMAPHORE_SRCS = \
+		sched_yield.c \
+		sched_setaffinity.c \
 		sem_init.c \
 		sem_destroy.c \
 		sem_trywait.c \
@@ -324,43 +290,32 @@ SEMAPHORE_SRCS = \
 		sem_getvalue.c \
 		sem_open.c \
 		sem_close.c \
-		sem_unlink.c
-
-SPIN_SRCS	= \
+		sem_unlink.c \
 		pthread_spin_init.c \
 		pthread_spin_destroy.c \
 		pthread_spin_lock.c \
 		pthread_spin_unlock.c \
-		pthread_spin_trylock.c
-
-SYNC_SRCS	= \
+		pthread_spin_trylock.c \
 		pthread_detach.c \
-		pthread_join.c
-
-TSD_SRCS	= \
+		pthread_join.c \
+		pthread_timedjoin_np.c \
+		pthread_tryjoin_np.c \
 		pthread_key_create.c \
 		pthread_key_delete.c \
 		pthread_setspecific.c \
 		pthread_getspecific.c
 
+INCL		= \
+		config.h \
+		implement.h \
+		need_errno.h \
+		pthread.h \
+		semaphore.h \
+		need_errno.h
+
 # Output useful info if no target given. I.e. the first target that "make" sees is used in this case.
 default_target: help
 
-attr.$(OBJEXT):		attr.c $(ATTR_SRCS) $(INCL)
-barrier.$(OBJEXT):	barrier.c $(BARRIER_SRCS) $(INCL)
-cancel.$(OBJEXT):	cancel.c $(CANCEL_SRCS) $(INCL)
-condvar.$(OBJEXT):	condvar.c $(CONDVAR_SRCS) $(INCL)
-exit.$(OBJEXT):		exit.c $(EXIT_SRCS) $(INCL)
-misc.$(OBJEXT):		misc.c $(MISC_SRCS) $(INCL)
-mutex.$(OBJEXT):	mutex.c $(MUTEX_SRCS) $(INCL)
-nonportable.$(OBJEXT):	nonportable.c $(NONPORTABLE_SRCS) $(INCL)
-private.$(OBJEXT):	private.c $(PRIVATE_SRCS) $(INCL)
-rwlock.$(OBJEXT):	rwlock.c $(RWLOCK_SRCS) $(INCL)
-sched.$(OBJEXT):	sched.c $(SCHED_SRCS) $(INCL)
-semaphore.$(OBJEXT):	semaphore.c $(SEMAPHORE_SRCS) $(INCL)
-spin.$(OBJEXT):		spin.c $(SPIN_SRCS) $(INCL)
-sync.$(OBJEXT):		sync.c $(SYNC_SRCS) $(INCL)
-tsd.$(OBJEXT):		tsd.c $(TSD_SRCS) $(INCL)
-version.$(RESEXT):	version.rc $(INCL)
+pthread.$(OBJEXT): pthread.c $(PTHREAD_SRCS)
 
 # end common.mk

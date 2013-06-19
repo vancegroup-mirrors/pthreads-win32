@@ -152,9 +152,20 @@ pthread_create (pthread_t * tid,
 
   if (a != NULL)
     {
+      cpu_set_t none;
+      cpu_set_t attr_cpuset;
+      ((_sched_cpu_set_vector_*)&attr_cpuset)->_cpuset = a->cpuset;
+
       stackSize = (unsigned int)a->stacksize;
       tp->detachState = a->detachstate;
       priority = a->param.sched_priority;
+      CPU_ZERO(&none);
+      if (! CPU_EQUAL(&attr_cpuset, &none))
+        {
+          tp->cpuset = a->cpuset;
+        }
+      if (a->thrname != NULL)
+        tp->name = _strdup(a->thrname);
 
 #if (THREAD_PRIORITY_LOWEST > THREAD_PRIORITY_NORMAL)
       /* WinCE */

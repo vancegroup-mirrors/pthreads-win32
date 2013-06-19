@@ -11,26 +11,27 @@
  *
  *      Pthreads-win32 - POSIX Threads Library for Win32
  *      Copyright(C) 1998 John E. Bossom
- *      Copyright(C) 1999,2005 Pthreads-win32 contributors
- * 
- *      Contact Email: rpj@callisto.canberra.edu.au
- * 
+ *      Copyright(C) 1999,2012 Pthreads-win32 contributors
+ *
+ *      Homepage1: http://sourceware.org/pthreads-win32/
+ *      Homepage2: http://sourceforge.net/projects/pthreads4w/
+ *
  *      The current list of contributors is contained
  *      in the file CONTRIBUTORS included with the source
  *      code distribution. The list can also be seen at the
  *      following World Wide Web location:
  *      http://sources.redhat.com/pthreads-win32/contributors.html
- * 
+ *
  *      This library is free software; you can redistribute it and/or
  *      modify it under the terms of the GNU Lesser General Public
  *      License as published by the Free Software Foundation; either
  *      version 2 of the License, or (at your option) any later version.
- * 
+ *
  *      This library is distributed in the hope that it will be useful,
  *      but WITHOUT ANY WARRANTY; without even the implied warranty of
  *      MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the GNU
  *      Lesser General Public License for more details.
- * 
+ *
  *      You should have received a copy of the GNU Lesser General Public
  *      License along with this library in the file COPYING.LIB;
  *      if not, write to the Free Software Foundation, Inc.,
@@ -69,20 +70,27 @@
 # error Please upgrade your GNU compiler to one that supports __declspec.
 #endif
 
+#if defined(PTW32_STATIC_LIB) && defined(_MSC_VER) && _MSC_VER >= 1400
+#  undef PTW32_STATIC_LIB
+#  define PTW32_STATIC_TLSLIB
+#endif
+
 /*
  * When building the library, you should define PTW32_BUILD so that
  * the variables/functions are exported correctly. When using the library,
  * do NOT define PTW32_BUILD, and then the variables/functions will
  * be imported correctly.
  */
-#if !defined(PTW32_STATIC_LIB)
-#  if defined(PTW32_BUILD)
+#if defined(PTW32_STATIC_LIB) || defined(PTW32_STATIC_TLSLIB)
+#  define PTW32_DLLPORT
+#elif defined(PTW32_BUILD)
 #    define PTW32_DLLPORT __declspec (dllexport)
 #  else
 #    define PTW32_DLLPORT __declspec (dllimport)
 #  endif
-#else
-#  define PTW32_DLLPORT
+
+#if !defined(PTW32_CDECL)
+# define PTW32_CDECL __cdecl
 #endif
 
 /*
@@ -129,35 +137,35 @@ typedef unsigned int mode_t;
 
 typedef struct sem_t_ * sem_t;
 
-PTW32_DLLPORT int __cdecl sem_init (sem_t * sem,
-			    int pshared,
-			    unsigned int value);
+PTW32_DLLPORT int PTW32_CDECL sem_init (sem_t * sem,
+					int pshared,
+					unsigned int value);
 
-PTW32_DLLPORT int __cdecl sem_destroy (sem_t * sem);
+PTW32_DLLPORT int PTW32_CDECL sem_destroy (sem_t * sem);
 
-PTW32_DLLPORT int __cdecl sem_trywait (sem_t * sem);
+PTW32_DLLPORT int PTW32_CDECL sem_trywait (sem_t * sem);
 
-PTW32_DLLPORT int __cdecl sem_wait (sem_t * sem);
+PTW32_DLLPORT int PTW32_CDECL sem_wait (sem_t * sem);
 
-PTW32_DLLPORT int __cdecl sem_timedwait (sem_t * sem,
-				 const struct timespec * abstime);
+PTW32_DLLPORT int PTW32_CDECL sem_timedwait (sem_t * sem,
+					     const struct timespec * abstime);
 
-PTW32_DLLPORT int __cdecl sem_post (sem_t * sem);
+PTW32_DLLPORT int PTW32_CDECL sem_post (sem_t * sem);
 
-PTW32_DLLPORT int __cdecl sem_post_multiple (sem_t * sem,
-				     int count);
+PTW32_DLLPORT int PTW32_CDECL sem_post_multiple (sem_t * sem,
+						 int count);
 
-PTW32_DLLPORT int __cdecl sem_open (const char * name,
-			    int oflag,
-			    mode_t mode,
-			    unsigned int value);
+PTW32_DLLPORT int PTW32_CDECL sem_open (const char * name,
+					int oflag,
+					mode_t mode,
+					unsigned int value);
 
-PTW32_DLLPORT int __cdecl sem_close (sem_t * sem);
+PTW32_DLLPORT int PTW32_CDECL sem_close (sem_t * sem);
 
-PTW32_DLLPORT int __cdecl sem_unlink (const char * name);
+PTW32_DLLPORT int PTW32_CDECL sem_unlink (const char * name);
 
-PTW32_DLLPORT int __cdecl sem_getvalue (sem_t * sem,
-				int * sval);
+PTW32_DLLPORT int PTW32_CDECL sem_getvalue (sem_t * sem,
+					    int * sval);
 
 #if defined(__cplusplus)
 }				/* End of extern "C" */
