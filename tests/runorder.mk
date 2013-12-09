@@ -111,6 +111,7 @@ once3.pass: once2.pass
 once4.pass: once3.pass
 priority1.pass: join1.pass
 priority2.pass: priority1.pass barrier3.pass
+reinit1.pass: rwlock7.pass
 reuse1.pass: create3.pass
 reuse2.pass: reuse1.pass
 robust1.pass: mutex8r.pass
@@ -148,6 +149,7 @@ spin3.pass: spin2.pass
 spin4.pass: spin3.pass
 stress1.pass: create3.pass mutex8.pass barrier6.pass
 threestage.pass: stress1.pass
+timeouts.pass: condvar9.pass
 tsd1.pass: barrier5.pass join1.pass
 tsd2.pass: tsd1.pass
 tsd3.pass: tsd2.pass

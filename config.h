@@ -10,6 +10,9 @@
 /* We're building the pthreads-win32 library */
 #define PTW32_BUILD
 
+/* CPU affinity */
+#define HAVE_CPU_AFFINITY
+
 /* Do we know about the C type sigset_t? */
 #undef HAVE_SIGSET_T
 
@@ -46,7 +49,7 @@
 /* Do we know about type mode_t? */
 #undef HAVE_MODE_T
 
-/* 
+/*
  * Define if GCC has atomic builtins, i.e. __sync_* intrinsics
  * __sync_lock_* is implemented in mingw32 gcc 4.5.2 at least
  * so this define does not turn those on or off. If you get an
@@ -109,6 +112,7 @@
  * to the pthreads-win32 maintainer. Thanks.
  *********************************************************************/
 #if defined(WINCE)
+#undef  HAVE_CPU_AFFINITY
 #define NEED_DUPLICATEHANDLE
 #define NEED_CREATETHREAD
 #define NEED_ERRNO
@@ -148,6 +152,4 @@
 #define HAVE_C_INLINE
 #endif
 
-
-
-#endif
+#endif /* PTW32_CONFIG_H */
